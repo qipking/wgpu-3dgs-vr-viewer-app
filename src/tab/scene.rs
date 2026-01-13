@@ -110,6 +110,9 @@ pub struct Scene {
 
     /// The pending query result.
     query_result: Option<QueryResult>,
+
+    /// VR mode toggle
+    vr_mode: bool,
 }
 
 impl Tab for Scene {
@@ -124,6 +127,7 @@ impl Tab for Scene {
             initialized: false,
             query: Query::none(),
             query_result: None,
+            vr_mode: false, // 默认关闭VR模式
         }
     }
 
@@ -313,6 +317,9 @@ impl Scene {
 
         // UI
         ui.horizontal(|ui| {
+            // 添加VR模式开关
+            ui.checkbox(&mut self.vr_mode, "VR Mode");
+
             let loaded_label = ui.label(format!(
                 "📦 Loaded: {}",
                 if gs.models.len() > 1 {
@@ -467,130 +474,349 @@ impl Scene {
             }
         }
 
-        // 视口
-        egui::Frame::canvas(ui.style()).show(ui, |ui| {
-            // 定义压缩类型的匹配宏
-            macro_rules! case {
-                ($sh:ident, $cov3d:ident) => {
-                    app::Compressions {
-                        sh: app::ShCompression::$sh,
-                        cov3d: app::Cov3dCompression::$cov3d,
-                    }
-                };
-            }
+        // Viewport
+        if self.vr_mode {
+            // VR模式：使用水平布局创建双窗口
+            ui.centered_and_justified(|ui| {
+                ui.horizontal(|ui| {
+                    // 确保左右窗口各占一半宽度，不留间隙
+                    let total_width = ui.available_width();
+                    let window_width = (total_width / 2.0) - 2.0; // 减去一点空间避免溢出
+                    
+                    // 左侧窗口
+                    ui.scope(|ui| {
+                        ui.set_min_width(window_width);
+                        ui.set_max_width(window_width);
+                        
+                        egui::Frame::canvas(ui.style()).show(ui, |ui| {
+                            macro_rules! case {
+                                ($sh:ident, $cov3d:ident) => {
+                                    app::Compressions {
+                                        sh: app::ShCompression::$sh,
+                                        cov3d: app::Cov3dCompression::$cov3d,
+                                    }
+                                };
+                            }
 
-            // 定义应用压缩类型的宏
-            macro_rules! apply {
-                ($macro:ident, $gs:expr, $($args:expr),*) => {
-                    match &$gs.compressions {
-                        case!(Single, Single) => {
-                            $macro!(Single, Single, $($args),*)
+                            macro_rules! apply {
+                                ($macro:ident, $gs:expr, $($args:expr),*) => {
+                                    match &$gs.compressions {
+                                        case!(Single, Single) => {
+                                            $macro!(Single, Single, $($args),*)
+                                        }
+                                        case!(Single, Half) => {
+                                            $macro!(Single, Half, $($args),*)
+                                        }
+                                        case!(Half, Single) => {
+                                            $macro!(Half, Single, $($args),*)
+                                        }
+                                        case!(Half, Half) => {
+                                            $macro!(Half, Half, $($args),*)
+                                        }
+                                        case!(Norm8, Single) => {
+                                            $macro!(Norm8, Single, $($args),*)
+                                        }
+                                        case!(Norm8, Half) => {
+                                            $macro!(Norm8, Half, $($args),*)
+                                        }
+                                        case!(Remove, Single) => {
+                                            $macro!(None, Single, $($args),*)
+                                        }
+                                        case!(Remove, Half) => {
+                                            $macro!(None, Half, $($args),*)
+                                        }
+                                    }
+                                }
+                            }
+
+                            let (left_rect, left_response) =
+                                ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
+
+                            macro_rules! postprocess {
+                                ($sh:ident, $cov3d:ident, $self:expr, $frame:expr, $rect:expr, $gs:expr) => {
+                                    paste::paste! {
+                                        $self.loaded_postprocess::<
+                                            gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]
+                                        >($frame, $rect, $gs)
+                                    }
+                                };
+                            }
+
+                            apply!(postprocess, gs, self, frame, &left_rect, gs);
+
+                            if self.query_result.is_none() {
+                                self.input.handle(ui, gs, &mut self.query, &left_rect, &left_response);
+                            }
+
+                            macro_rules! preprocess {
+                                ($sh:ident, $cov3d:ident, $self:expr, $frame:expr, $rect:expr, $gs:expr) => {
+                                    paste::paste! {
+                                        $self.loaded_preprocess::<
+                                            gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]
+                                        >($frame, $rect, $gs)
+                                    }
+                                };
+                            }
+
+                            apply!(preprocess, gs, self, frame, &left_rect, gs);
+
+                            let distances = gs
+                                .models
+                                .iter()
+                                .map(|(k, m)| {
+                                    (
+                                        k,
+                                        (m.world_center() - gs.camera.control.pos()).length_squared(),
+                                    )
+                                })
+                                .collect::<HashMap<_, _>>();
+
+                            macro_rules! painter {
+                                ($sh:ident, $cov3d:ident, $ui:expr, $rect:expr, $gs:expr) => {
+                                    paste::paste! {
+                                        $ui.painter().add(egui_wgpu::Callback::new_paint_callback(
+                                            $rect,
+                                            SceneCallback::<gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]> {
+                                                model_render_keys: $gs.models.iter()
+                                                    .filter(|(_, m)| m.visible)
+                                                    .sorted_by(|(a, _), (b, _)| {
+                                                        distances.get(b).expect("distance")
+                                                            .partial_cmp(&distances.get(a).expect("distance"))
+                                                            .unwrap_or(std::cmp::Ordering::Equal)
+                                                    })
+                                                    .map(|(k, _)| k.clone())
+                                                    .collect(),
+                                                query: self.query.clone(),
+                                                phantom: PhantomData,
+                                            },
+                                        ))
+                                    }
+                                };
+                            }
+
+                            apply!(painter, gs, ui, left_rect, gs);
+                        });
+                    });
+                    
+                    // 右侧窗口
+                    ui.scope(|ui| {
+                        ui.set_min_width(window_width);
+                        ui.set_max_width(window_width);
+                        
+                        egui::Frame::canvas(ui.style()).show(ui, |ui| {
+                            macro_rules! case {
+                                ($sh:ident, $cov3d:ident) => {
+                                    app::Compressions {
+                                        sh: app::ShCompression::$sh,
+                                        cov3d: app::Cov3dCompression::$cov3d,
+                                    }
+                                };
+                            }
+
+                            macro_rules! apply {
+                                ($macro:ident, $gs:expr, $($args:expr),*) => {
+                                    match &$gs.compressions {
+                                        case!(Single, Single) => {
+                                            $macro!(Single, Single, $($args),*)
+                                        }
+                                        case!(Single, Half) => {
+                                            $macro!(Single, Half, $($args),*)
+                                        }
+                                        case!(Half, Single) => {
+                                            $macro!(Half, Single, $($args),*)
+                                        }
+                                        case!(Half, Half) => {
+                                            $macro!(Half, Half, $($args),*)
+                                        }
+                                        case!(Norm8, Single) => {
+                                            $macro!(Norm8, Single, $($args),*)
+                                        }
+                                        case!(Norm8, Half) => {
+                                            $macro!(Norm8, Half, $($args),*)
+                                        }
+                                        case!(Remove, Single) => {
+                                            $macro!(None, Single, $($args),*)
+                                        }
+                                        case!(Remove, Half) => {
+                                            $macro!(None, Half, $($args),*)
+                                        }
+                                    }
+                                }
+                            }
+
+                            let (right_rect, right_response) =
+                                ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
+
+                            // 对于右眼窗口，我们只做渲染，不需要重复postprocess和preprocess
+                            if self.query_result.is_none() {
+                                self.input.handle(ui, gs, &mut self.query, &right_rect, &right_response);
+                            }
+
+                            let distances = gs
+                                .models
+                                .iter()
+                                .map(|(k, m)| {
+                                    (
+                                        k,
+                                        (m.world_center() - gs.camera.control.pos()).length_squared(),
+                                    )
+                                })
+                                .collect::<HashMap<_, _>>();
+
+                            macro_rules! painter {
+                                ($sh:ident, $cov3d:ident, $ui:expr, $rect:expr, $gs:expr) => {
+                                    paste::paste! {
+                                        $ui.painter().add(egui_wgpu::Callback::new_paint_callback(
+                                            $rect,
+                                            SceneCallback::<gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]> {
+                                                model_render_keys: $gs.models.iter()
+                                                    .filter(|(_, m)| m.visible)
+                                                    .sorted_by(|(a, _), (b, _)| {
+                                                        distances.get(b).expect("distance")
+                                                            .partial_cmp(&distances.get(a).expect("distance"))
+                                                            .unwrap_or(std::cmp::Ordering::Equal)
+                                                    })
+                                                    .map(|(k, _)| k.clone())
+                                                    .collect(),
+                                                query: self.query.clone(),
+                                                phantom: PhantomData,
+                                            },
+                                        ))
+                                    }
+                                };
+                            }
+
+                            apply!(painter, gs, ui, right_rect, gs);
+                        });
+                    });
+                });
+            });
+        } else {
+            // 原有模式
+            egui::Frame::canvas(ui.style()).show(ui, |ui| {
+                // 定义压缩类型的匹配宏
+                macro_rules! case {
+                    ($sh:ident, $cov3d:ident) => {
+                        app::Compressions {
+                            sh: app::ShCompression::$sh,
+                            cov3d: app::Cov3dCompression::$cov3d,
                         }
-                        case!(Single, Half) => {
-                            $macro!(Single, Half, $($args),*)
-                        }
-                        case!(Half, Single) => {
-                            $macro!(Half, Single, $($args),*)
-                        }
-                        case!(Half, Half) => {
-                            $macro!(Half, Half, $($args),*)
-                        }
-                        case!(Norm8, Single) => {
-                            $macro!(Norm8, Single, $($args),*)
-                        }
-                        case!(Norm8, Half) => {
-                            $macro!(Norm8, Half, $($args),*)
-                        }
-                        case!(Remove, Single) => {
-                            $macro!(None, Single, $($args),*)
-                        }
-                        case!(Remove, Half) => {
-                            $macro!(None, Half, $($args),*)
+                    };
+                }
+
+                // 定义应用压缩类型的宏
+                macro_rules! apply {
+                    ($macro:ident, $gs:expr, $($args:expr),*) => {
+                        match &$gs.compressions {
+                            case!(Single, Single) => {
+                                $macro!(Single, Single, $($args),*)
+                            }
+                            case!(Single, Half) => {
+                                $macro!(Single, Half, $($args),*)
+                            }
+                            case!(Half, Single) => {
+                                $macro!(Half, Single, $($args),*)
+                            }
+                            case!(Half, Half) => {
+                                $macro!(Half, Half, $($args),*)
+                            }
+                            case!(Norm8, Single) => {
+                                $macro!(Norm8, Single, $($args),*)
+                            }
+                            case!(Norm8, Half) => {
+                                $macro!(Norm8, Half, $($args),*)
+                            }
+                            case!(Remove, Single) => {
+                                $macro!(None, Single, $($args),*)
+                            }
+                            case!(Remove, Half) => {
+                                $macro!(None, Half, $($args),*)
+                            }
                         }
                     }
                 }
-            }
 
-            // 分配视口矩形和响应
-            let (rect, response) =
-                ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
+                // 分配视口矩形和响应
+                let (rect, response) =
+                    ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
 
-            // 定义后处理宏
-            macro_rules! postprocess {
-                ($sh:ident, $cov3d:ident, $self:expr, $frame:expr, $rect:expr, $gs:expr) => {
-                    paste::paste! {
-                        // 调用相应压缩类型的后处理方法
-                        $self.loaded_postprocess::<
-                            gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]
-                        >($frame, $rect, $gs)
-                    }
-                };
-            }
+                // 定义后处理宏
+                macro_rules! postprocess {
+                    ($sh:ident, $cov3d:ident, $self:expr, $frame:expr, $rect:expr, $gs:expr) => {
+                        paste::paste! {
+                            // 调用相应压缩类型的后处理方法
+                            $self.loaded_postprocess::<
+                                gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]
+                            >($frame, $rect, $gs)
+                        }
+                    };
+                }
 
-            // 应用后处理
-            apply!(postprocess, gs, self, frame, &rect, gs);
+                // 应用后处理
+                apply!(postprocess, gs, self, frame, &rect, gs);
 
-            // 如果没有待处理的查询结果，处理输入
-            if self.query_result.is_none() {
-                self.input.handle(ui, gs, &mut self.query, &rect, &response);
-            }
+                // 如果没有待处理的查询结果，处理输入
+                if self.query_result.is_none() {
+                    self.input.handle(ui, gs, &mut self.query, &rect, &response);
+                }
 
-            // 定义预处理宏
-            macro_rules! preprocess {
-                ($sh:ident, $cov3d:ident, $self:expr, $frame:expr, $rect:expr, $gs:expr) => {
-                    paste::paste! {
-                        // 调用相应压缩类型的预处理方法
-                        $self.loaded_preprocess::<
-                            gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]
-                        >($frame, $rect, $gs)
-                    }
-                };
-            }
+                // 定义预处理宏
+                macro_rules! preprocess {
+                    ($sh:ident, $cov3d:ident, $self:expr, $frame:expr, $rect:expr, $gs:expr) => {
+                        paste::paste! {
+                            // 调用相应压缩类型的预处理方法
+                            $self.loaded_preprocess::<
+                                gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]
+                            >($frame, $rect, $gs)
+                        }
+                    };
+                }
 
-            // 应用预处理
-            apply!(preprocess, gs, self, frame, &rect, gs);
+                // 应用预处理
+                apply!(preprocess, gs, self, frame, &rect, gs);
 
-            // 计算模型距离相机的距离
-            let distances = gs
-                .models
-                .iter()
-                .map(|(k, m)| {
-                    (
-                        k,  // 模型键
-                        (m.world_center() - gs.camera.control.pos()).length_squared(),  // 模型中心与相机位置的距离平方
-                    )
-                })
-                .collect::<HashMap<_, _>>();  // 收集为哈希映射
+                // 计算模型距离相机的距离
+                let distances = gs
+                    .models
+                    .iter()
+                    .map(|(k, m)| {
+                        (
+                            k,  // 模型键
+                            (m.world_center() - gs.camera.control.pos()).length_squared(),  // 模型中心与相机位置的距离平方
+                        )
+                    })
+                    .collect::<HashMap<_, _>>();  // 收集为哈希映射
 
-            // 定义绘制器宏
-            macro_rules! painter {
-                ($sh:ident, $cov3d:ident, $ui:expr, $rect:expr, $gs:expr) => {
-                    paste::paste! {
-                        // 添加绘制回调
-                        $ui.painter().add(egui_wgpu::Callback::new_paint_callback(
-                            $rect,
-                            SceneCallback::<gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]> {
-                                // 按照距离排序的可见模型键列表
-                                model_render_keys: $gs.models.iter()
-                                    .filter(|(_, m)| m.visible)  // 只保留可见模型
-                                    .sorted_by(|(a, _), (b, _)| {  // 按距离排序
-                                        distances.get(b).expect("distance")
-                                            .partial_cmp(&distances.get(a).expect("distance"))
-                                            .unwrap_or(std::cmp::Ordering::Equal)
-                                    })
-                                    .map(|(k, _)| k.clone())  // 获取键
-                                    .collect(),
-                                query: self.query.clone(),     // 当前查询
-                                phantom: PhantomData,          // 幽灵数据，用于泛型
-                            },
-                        ))
-                    }
-                };
-            }
+                // 定义绘制器宏
+                macro_rules! painter {
+                    ($sh:ident, $cov3d:ident, $ui:expr, $rect:expr, $gs:expr) => {
+                        paste::paste! {
+                            // 添加绘制回调
+                            $ui.painter().add(egui_wgpu::Callback::new_paint_callback(
+                                $rect,
+                                SceneCallback::<gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]> {
+                                    // 按照距离排序的可见模型键列表
+                                    model_render_keys: $gs.models.iter()
+                                        .filter(|(_, m)| m.visible)  // 只保留可见模型
+                                        .sorted_by(|(a, _), (b, _)| {  // 按距离排序
+                                            distances.get(b).expect("distance")
+                                                .partial_cmp(&distances.get(a).expect("distance"))
+                                                .unwrap_or(std::cmp::Ordering::Equal)
+                                        })
+                                        .map(|(k, _)| k.clone())  // 获取键
+                                        .collect(),
+                                    query: self.query.clone(),     // 当前查询
+                                    phantom: PhantomData,          // 幽灵数据，用于泛型
+                                },
+                            ))
+                        }
+                    };
+                }
 
-            // 应用绘制器
-            apply!(painter, gs, ui, rect, gs);
-        });
+                // 应用绘制器
+                apply!(painter, gs, ui, rect, gs);
+            });
+        }
 
         loaded  // 返回加载状态
     }
