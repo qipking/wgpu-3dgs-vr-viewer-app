@@ -1113,13 +1113,8 @@ impl GaussianSplattingModelTransform {
     /// Create a new Gaussian splatting model transform.
     pub const fn new() -> Self {
         Self {
-<<<<<<< HEAD
             pos: Vec3::new(0.0, 0.0, 0.0),
             rot: Vec3::new(0.0, 0.0, 180.0),
-=======
-            pos: Vec3::ZERO,
-            rot: Vec3::ZERO,
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
             scale: Vec3::ONE,
         }
     }

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 // 定义标准库的导入
 use std::{
     collections::HashMap,  // 导入 HashMap 类型
@@ -28,27 +27,6 @@ use wgpu_3dgs_viewer::{self as gs, QueryVariant, Texture};
 use crate::{app, renderer, util};
 
 // 从父模块导入 Tab trait
-=======
-use std::{
-    collections::HashMap,
-    io::Cursor,
-    marker::PhantomData,
-    sync::{Arc, Mutex, mpsc},
-};
-
-#[cfg(target_arch = "wasm32")]
-use eframe::wasm_bindgen::JsCast;
-
-use eframe::{egui_wgpu, wgpu};
-use glam::*;
-use itertools::Itertools;
-use num_format::ToFormattedString;
-use strum::IntoEnumIterator;
-use wgpu_3dgs_viewer::{self as gs, QueryVariant, Texture};
-
-use crate::{app, renderer, util};
-
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
 use super::Tab;
 
 /// The macro to apply the same function to [`SceneResource`] regardless of the compression.
@@ -132,15 +110,12 @@ pub struct Scene {
 
     /// The pending query result.
     query_result: Option<QueryResult>,
-<<<<<<< HEAD
 
     /// VR mode toggle
     vr_mode: bool,
     
     /// VR parallax strength (IPD multiplier)
     vr_parallax_strength: f32,
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
 }
 
 impl Tab for Scene {
@@ -155,11 +130,8 @@ impl Tab for Scene {
             initialized: false,
             query: Query::none(),
             query_result: None,
-<<<<<<< HEAD
             vr_mode: false, // 默认关闭VR模式
             vr_parallax_strength: 1.0, // 默认视差强度为1.0
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
         }
     }
 
@@ -349,7 +321,6 @@ impl Scene {
 
         // UI
         ui.horizontal(|ui| {
-<<<<<<< HEAD
             // 添加VR模式开关
             let vr_changed = ui.checkbox(&mut self.vr_mode, "VR Mode").changed();
             if vr_changed {
@@ -366,8 +337,6 @@ impl Scene {
 
             ui.separator();
 
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
             let loaded_label = ui.label(format!(
                 "📦 Loaded: {}",
                 if gs.models.len() > 1 {
@@ -523,7 +492,6 @@ impl Scene {
         }
 
         // Viewport
-<<<<<<< HEAD
         if self.vr_mode {
             // VR模式：使用水平布局创建双窗口
             ui.centered_and_justified(|ui| {
@@ -897,152 +865,26 @@ impl Scene {
     ///
     /// 由于 eframe 不允许在渲染通道之后进行任何计算通道，
     /// 因此在此运行预处理通道之前计算上一帧的结果。
-=======
-        egui::Frame::canvas(ui.style()).show(ui, |ui| {
-            macro_rules! case {
-                ($sh:ident, $cov3d:ident) => {
-                    app::Compressions {
-                        sh: app::ShCompression::$sh,
-                        cov3d: app::Cov3dCompression::$cov3d,
-                    }
-                };
-            }
-
-            macro_rules! apply {
-                ($macro:ident, $gs:expr, $($args:expr),*) => {
-                    match &$gs.compressions {
-                        case!(Single, Single) => {
-                            $macro!(Single, Single, $($args),*)
-                        }
-                        case!(Single, Half) => {
-                            $macro!(Single, Half, $($args),*)
-                        }
-                        case!(Half, Single) => {
-                            $macro!(Half, Single, $($args),*)
-                        }
-                        case!(Half, Half) => {
-                            $macro!(Half, Half, $($args),*)
-                        }
-                        case!(Norm8, Single) => {
-                            $macro!(Norm8, Single, $($args),*)
-                        }
-                        case!(Norm8, Half) => {
-                            $macro!(Norm8, Half, $($args),*)
-                        }
-                        case!(Remove, Single) => {
-                            $macro!(None, Single, $($args),*)
-                        }
-                        case!(Remove, Half) => {
-                            $macro!(None, Half, $($args),*)
-                        }
-                    }
-                }
-            }
-
-            let (rect, response) =
-                ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
-
-            macro_rules! postprocess {
-                ($sh:ident, $cov3d:ident, $self:expr, $frame:expr, $rect:expr, $gs:expr) => {
-                    paste::paste! {
-                        $self.loaded_postprocess::<
-                            gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]
-                        >($frame, $rect, $gs)
-                    }
-                };
-            }
-
-            apply!(postprocess, gs, self, frame, &rect, gs);
-
-            if self.query_result.is_none() {
-                self.input.handle(ui, gs, &mut self.query, &rect, &response);
-            }
-
-            macro_rules! preprocess {
-                ($sh:ident, $cov3d:ident, $self:expr, $frame:expr, $rect:expr, $gs:expr) => {
-                    paste::paste! {
-                        $self.loaded_preprocess::<
-                            gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]
-                        >($frame, $rect, $gs)
-                    }
-                };
-            }
-
-            apply!(preprocess, gs, self, frame, &rect, gs);
-
-            let distances = gs
-                .models
-                .iter()
-                .map(|(k, m)| {
-                    (
-                        k,
-                        (m.world_center() - gs.camera.control.pos()).length_squared(),
-                    )
-                })
-                .collect::<HashMap<_, _>>();
-
-            macro_rules! painter {
-                ($sh:ident, $cov3d:ident, $ui:expr, $rect:expr, $gs:expr) => {
-                    paste::paste! {
-                        $ui.painter().add(egui_wgpu::Callback::new_paint_callback(
-                            $rect,
-                            SceneCallback::<gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]> {
-                                model_render_keys: $gs.models.iter()
-                                    .filter(|(_, m)| m.visible)
-                                    .sorted_by(|(a, _), (b, _)| {
-                                        distances.get(b).expect("distance")
-                                            .partial_cmp(&distances.get(a).expect("distance"))
-                                            .unwrap_or(std::cmp::Ordering::Equal)
-                                    })
-                                    .map(|(k, _)| k.clone())
-                                    .collect(),
-                                query: self.query.clone(),
-                                phantom: PhantomData,
-                            },
-                        ))
-                    }
-                };
-            }
-
-            apply!(painter, gs, ui, rect, gs);
-        });
-
-        loaded
-    }
-
-    /// Run the postprocess.
-    ///
-    /// Because eframe does not allow any compute pass after the render pass,
-    /// this is run before the preprocess pass to compute the previous frame.
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
     fn loaded_postprocess<G: gs::GaussianPod>(
         &mut self,
         frame: &mut eframe::Frame,
         rect: &egui::Rect,
         gs: &mut app::GaussianSplatting,
     ) {
-<<<<<<< HEAD
         // 解构渲染状态
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
         let egui_wgpu::RenderState {
             device,
             queue,
             renderer,
             ..
         } = frame.wgpu_render_state().expect("render state");
-<<<<<<< HEAD
         
         let mut renderer = renderer.write();  // 锁定渲染器
         // 获取场景资源
-=======
-        let mut renderer = renderer.write();
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
         let SceneResource::<G> { viewer, .. } = renderer
             .callback_resources
             .get_mut()
             .expect("scene resource");
-<<<<<<< HEAD
         let viewer = viewer.lock().expect("viewer");  // 锁定查看器
 
         // 后处理，因为 eframe 无法在渲染通道后执行任何计算通道
@@ -1070,32 +912,6 @@ impl Scene {
         // 接收查询结果
         match &mut self.query_result {
             // 如果是测量定位命中查询结果
-=======
-        let viewer = viewer.lock().expect("viewer");
-
-        // Postprocess, because eframe cannot do any compute pass after the render pass.
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Postprocess Encoder"),
-        });
-
-        for key in gs.models.iter().filter(|(_, m)| m.visible).map(|(k, _)| k) {
-            let model = &viewer.models.get(key).expect("model");
-
-            viewer.postprocessor.postprocess(
-                &mut encoder,
-                &model.bind_groups.postprocessor.0,
-                &model.bind_groups.postprocessor.1,
-                model.gaussian_buffers.gaussians_buffer.len() as u32,
-                &model.gaussian_buffers.postprocess_indirect_args_buffer,
-            );
-        }
-
-        queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::Maintain::Wait);
-
-        // Receive query result.
-        match &mut self.query_result {
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
             Some(QueryResult::MeasurementLocateHit) => {
                 if let Query::MeasurementLocateHit {
                     pod,
@@ -1103,7 +919,6 @@ impl Scene {
                     tx,
                 } = &self.query
                 {
-<<<<<<< HEAD
                     let (query_result_tx, rx) = oneshot::channel();  // 创建单次通道
                     self.query_result = Some(QueryResult::Downloading(rx));  // 设置为下载状态
 
@@ -1116,18 +931,6 @@ impl Scene {
                     let viewer_size = Vec2::from_array(rect.size().into()).as_uvec2();  // 获取视图尺寸
                     
                     // 获取计数缓冲区
-=======
-                    let (query_result_tx, rx) = oneshot::channel();
-                    self.query_result = Some(QueryResult::Downloading(rx));
-
-                    let device = device.clone();
-                    let queue = queue.clone();
-                    let pod = *pod;
-                    let hit_method = *hit_method;
-                    let tx = tx.clone();
-                    let camera = gs.camera.control.clone();
-                    let viewer_size = Vec2::from_array(rect.size().into()).as_uvec2();
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                     let count_buffer = viewer
                         .models
                         .get(&gs.selected_model_key)
@@ -1135,10 +938,7 @@ impl Scene {
                         .gaussian_buffers
                         .query_result_count_buffer
                         .clone();
-<<<<<<< HEAD
                     // 获取结果缓冲区
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                     let results_buffer = viewer
                         .models
                         .get(&gs.selected_model_key)
@@ -1147,19 +947,14 @@ impl Scene {
                         .query_results_buffer
                         .clone();
 
-<<<<<<< HEAD
                     // 执行阻塞任务
                     util::exec_blocking_task(async move {
                         // 下载查询结果
-=======
-                    util::exec_blocking_task(async move {
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                         let mut results =
                             gs::query::download(&device, &queue, &count_buffer, &results_buffer)
                                 .await
                                 .expect("download")
                                 .into_iter()
-<<<<<<< HEAD
                                 .map(gs::QueryHitResultPod::from)  // 转换为查询命中结果POD
                                 .collect::<Vec<_>>();
 
@@ -1168,19 +963,11 @@ impl Scene {
                             // 最大透明度方法
                             app::MeasurementHitMethod::MostAlpha => {
                                 // 按alpha范围查找命中位置
-=======
-                                .map(gs::QueryHitResultPod::from)
-                                .collect::<Vec<_>>();
-
-                        let pos = match hit_method {
-                            app::MeasurementHitMethod::MostAlpha => {
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                                 gs::query::hit_pos_by_alpha_range(
                                     &pod,
                                     &mut results,
                                     &camera,
                                     viewer_size,
-<<<<<<< HEAD
                                     0.05,  // alpha阈值
                                 )
                                 .map(|(_, _, pos)| pos)  // 提取位置
@@ -1196,25 +983,10 @@ impl Scene {
                         };
 
                         // 如果发送位置失败，记录错误
-=======
-                                    0.05,
-                                )
-                                .map(|(_, _, pos)| pos)
-                                .unwrap_or(Vec3::ZERO)
-                            }
-                            app::MeasurementHitMethod::Closest => {
-                                gs::query::hit_pos_by_closest(&pod, &results, &camera, viewer_size)
-                                    .map(|(_, pos)| pos)
-                                    .unwrap_or(Vec3::ZERO)
-                            }
-                        };
-
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                         if let Err(e) = tx.send(pos) {
                             log::error!("Error sending locate hit query result: {e}");
                         }
 
-<<<<<<< HEAD
                         query_result_tx.send(None).expect("send");  // 发送查询结果
                     });
                 } else {
@@ -1228,36 +1000,17 @@ impl Scene {
         if let Some(QueryResult::Downloading(rx)) = &self.query_result {
             if let Ok(query_result) = rx.try_recv() {  // 尝试接收结果
                 self.query_result = query_result;     // 更新查询结果
-=======
-                        query_result_tx.send(None).expect("send");
-                    });
-                } else {
-                    self.query_result = None;
-                }
-            }
-            None | Some(QueryResult::Downloading(..)) => {}
-        }
-
-        if let Some(QueryResult::Downloading(rx)) = &self.query_result {
-            if let Ok(query_result) = rx.try_recv() {
-                self.query_result = query_result;
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
             }
         }
     }
 
-<<<<<<< HEAD
     /// 执行预处理
-=======
-    /// Run the preprocess.
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
     fn loaded_preprocess<G: gs::GaussianPod>(
         &mut self,
         frame: &mut eframe::Frame,
         rect: &egui::Rect,
         gs: &mut app::GaussianSplatting,
     ) {
-<<<<<<< HEAD
         // 在VR模式下，左眼也需要偏移（向左）
         self.loaded_preprocess_with_camera_offset::<G>(frame, rect, gs, false, self.vr_mode);
     }
@@ -1412,22 +1165,16 @@ impl Scene {
         
         // 正常模式：执行完整预处理
         // 解构渲染状态
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
         let egui_wgpu::RenderState {
             device,
             queue,
             renderer,
             ..
         } = frame.wgpu_render_state().expect("render state");
-<<<<<<< HEAD
         
         let mut renderer = renderer.write();  // 锁定渲染器
         
         // 获取场景资源
-=======
-        let mut renderer = renderer.write();
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
         let SceneResource::<G> {
             viewer,
             measurement_renderer,
@@ -1443,7 +1190,6 @@ impl Scene {
             .get_mut()
             .expect("scene resource");
 
-<<<<<<< HEAD
         let mut viewer = viewer.lock().expect("viewer");  // 锁定查看器
         // 创建命令编码器
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -1466,39 +1212,15 @@ impl Scene {
                     .update_bind_group(device, &viewer.world_buffers.query_texture);
 
                 // 更新未编辑模型的绑定组
-=======
-        let mut viewer = viewer.lock().expect("viewer");
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Preprocess Encoder"),
-        });
-
-        if self.query_result.is_none() {
-            // Update query texture size.
-            let wgpu::Extent3d { width, height, .. } =
-                viewer.world_buffers.query_texture.texture().size();
-            let texture_size = uvec2(width, height);
-
-            let viewer_size = Vec2::from_array(rect.size().into()).as_uvec2();
-            if texture_size != viewer_size {
-                viewer.update_query_texture_size(device, viewer_size);
-                query_texture_overlay
-                    .update_bind_group(device, &viewer.world_buffers.query_texture);
-
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                 for (key, model) in unedited_models.iter_mut() {
                     model.update_bind_group(
                         device,
                         &viewer,
-<<<<<<< HEAD
                         &viewer.models.get(key).expect("model").gaussian_buffers,  // 获取模型高斯缓冲区
-=======
-                        &viewer.models.get(key).expect("model").gaussian_buffers,
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                     );
                 }
             }
 
-<<<<<<< HEAD
             // 处理新查询
             if let Query::MeasurementLocateHit { .. } = self.query {
                 self.query_result = Some(QueryResult::MeasurementLocateHit);  // 设置为测量定位命中结果
@@ -1509,24 +1231,12 @@ impl Scene {
                 Query::None { pod } => pod.as_query(),  // 无查询
                 Query::MeasurementLocateHit { pod, .. } => pod.as_query(),  // 测量定位查询
                 Query::Selection {  // 选择查询
-=======
-            // Handle new query.
-            if let Query::MeasurementLocateHit { .. } = self.query {
-                self.query_result = Some(QueryResult::MeasurementLocateHit);
-            }
-
-            let query_pod = match &self.query {
-                Query::None { pod } => pod.as_query(),
-                Query::MeasurementLocateHit { pod, .. } => pod.as_query(),
-                Query::Selection {
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                     action,
                     op,
                     immediate,
                     brush_radius,
                     pos,
                 } => {
-<<<<<<< HEAD
                     query_toolset.set_use_texture(!immediate);  // 设置是否使用纹理
                     query_toolset.update_brush_radius(*brush_radius);  // 更新画笔半径
 
@@ -1548,32 +1258,10 @@ impl Scene {
             viewer.update_query(queue, query_pod);  // 更新查询
 
             // 如果是选择查询且非立即执行
-=======
-                    query_toolset.set_use_texture(!immediate);
-                    query_toolset.update_brush_radius(*brush_radius);
-
-                    match action {
-                        Some(QuerySelectionAction::Start(tool)) => {
-                            query_toolset.start(*tool, *op, *pos)
-                        }
-                        Some(QuerySelectionAction::End) => query_toolset.end(),
-                        None => query_toolset.update_pos(*pos),
-                    };
-
-                    query_cursor.update_query_toolset(queue, query_toolset, *pos);
-
-                    query_toolset.query()
-                }
-            };
-
-            viewer.update_query(queue, query_pod);
-
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
             if let Query::Selection {
                 immediate: false, ..
             } = self.query
             {
-<<<<<<< HEAD
                 // 在查询纹理上渲染
                 query_toolset.render(queue, &mut encoder, &viewer.world_buffers.query_texture);
             }
@@ -1638,59 +1326,16 @@ impl Scene {
                                 U8Vec4::from_array(gs.selection.highlight_color.to_array())  // 颜色数组
                                     .as_vec4()  // 转为向量
                                     / 255.0,    // 归一化
-=======
-                query_toolset.render(queue, &mut encoder, &viewer.world_buffers.query_texture);
-            }
-
-            // Update the viewer.
-            viewer.update_camera(queue, &gs.camera.control, viewer_size);
-            viewer.update_model_transform(
-                queue,
-                &gs.selected_model_key,
-                gs.selected_model().transform.pos,
-                gs.selected_model().transform.quat(),
-                gs.selected_model().transform.scale,
-            );
-            viewer.update_gaussian_transform(
-                queue,
-                gs.gaussian_transform.size,
-                gs.gaussian_transform.display_mode,
-                gs.gaussian_transform.sh_deg,
-                gs.gaussian_transform.no_sh0,
-            );
-
-            // Selections.
-            match gs.action {
-                Some(app::Action::Selection) => match &gs.selection.edit {
-                    Some(edit) => {
-                        viewer.update_selection_edit_with_pod(queue, &edit.to_pod());
-                        viewer.update_selection_highlight(queue, vec4(0.0, 0.0, 0.0, 0.0));
-                        gs.selection.show_unedited = false;
-                    }
-                    None => {
-                        viewer
-                            .update_selection_edit_with_pod(queue, &gs::GaussianEditPod::default());
-                        viewer.update_selection_highlight_with_pod(
-                            queue,
-                            &gs::SelectionHighlightPod::new(
-                                U8Vec4::from_array(gs.selection.highlight_color.to_array())
-                                    .as_vec4()
-                                    / 255.0,
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                             ),
                         );
                     }
                 },
                 _ => {
-<<<<<<< HEAD
                     // 清除选择高亮
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                     viewer.update_selection_highlight(queue, vec4(0.0, 0.0, 0.0, 0.0));
                 }
             }
 
-<<<<<<< HEAD
             // 如果测量可见命中对不为空
             if !measurement_visible_hit_pairs.is_empty() {
                 // 更新测量渲染器中的命中对
@@ -1698,18 +1343,10 @@ impl Scene {
                     device,
                     measurement_visible_hit_pairs,
                     &viewer.world_buffers.camera_buffer,  // 相机缓冲区
-=======
-            if !measurement_visible_hit_pairs.is_empty() {
-                measurement_renderer.update_hit_pairs(
-                    device,
-                    measurement_visible_hit_pairs,
-                    &viewer.world_buffers.camera_buffer,
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                 );
             }
         }
 
-<<<<<<< HEAD
         *show_unedited_model = gs.selection.show_unedited;  // 更新显示未编辑模型标志
         if *show_unedited_model {
             // 如果显示未编辑模型，使用默认编辑更新选择编辑
@@ -1748,43 +1385,6 @@ impl Scene {
     /// 高斯模型已加载，当前正在为查看器选择压缩设置
     ///
     /// 返回 true 表示确认，false 表示取消，[`None`] 表示尚未确认
-=======
-        *show_unedited_model = gs.selection.show_unedited;
-        if *show_unedited_model {
-            viewer.update_selection_edit_with_pod(queue, &gs::GaussianEditPod::default());
-        }
-
-        // Preprocesses.
-        for key in gs.models.iter().filter(|(_, m)| m.visible).map(|(k, _)| k) {
-            let model = &viewer.models.get(key).expect("model");
-            let unedited_model = unedited_models.get(key).expect("unedited model");
-
-            viewer.preprocessor.preprocess(
-                &mut encoder,
-                match show_unedited_model {
-                    true => &unedited_model.preprocessor_bind_group,
-                    false => &model.bind_groups.preprocessor,
-                },
-                model.gaussian_buffers.gaussians_buffer.len() as u32,
-            );
-
-            viewer.radix_sorter.sort(
-                &mut encoder,
-                &model.bind_groups.radix_sorter,
-                &model.gaussian_buffers.radix_sort_indirect_args_buffer,
-            );
-        }
-
-        queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::Maintain::Wait);
-    }
-
-    /// Initialize the scene.
-    ///
-    /// Gaussians loaded, currently selecting compression settings for viewer.
-    ///
-    /// Returns true if confirmed, false if cancelled, [`None`] if not yet confirmed.
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
     fn initialize(
         &mut self,
         ui: &mut egui::Ui,
@@ -1792,7 +1392,6 @@ impl Scene {
         gs: &mut app::GaussianSplatting,
         compressions: &mut app::Compressions,
     ) -> Result<Option<bool>, String> {
-<<<<<<< HEAD
         // 显示初始化场景模态窗口
         egui::Modal::new(egui::Id::new("initialize_scene_modal"))
             .show(ui.ctx(), |ui| {
@@ -1848,56 +1447,6 @@ impl Scene {
                             });
                         ui.label(util::human_readable_size(  // 人类可读尺寸
                             match compressions.sh {  // 根据压缩类型计算尺寸
-=======
-        egui::Modal::new(egui::Id::new("initialize_scene_modal"))
-            .show(ui.ctx(), |ui| {
-                ui.add(egui::Label::new(
-                    egui::RichText::new("Model loaded successfully ✅").heading(),
-                ));
-                ui.separator();
-                ui.label("Please confirm the settings for initializing the scene");
-                ui.label("");
-
-                egui::Grid::new("initialize_scene_grid")
-                    .striped(true)
-                    .show(ui, |ui| {
-                        ui.add(egui::Label::new(egui::RichText::new("Property").strong()));
-                        ui.add(egui::Label::new(
-                            egui::RichText::new("Compression").strong(),
-                        ));
-                        ui.add(egui::Label::new(egui::RichText::new("Size").strong()));
-                        ui.end_row();
-
-                        ui.label("Position");
-                        ui.label("N/A");
-                        ui.label(util::human_readable_size(
-                            std::mem::size_of::<Vec3>()
-                                * gs.selected_model().gaussians.gaussians.capacity(),
-                        ));
-                        ui.end_row();
-
-                        ui.label("Color");
-                        ui.label("N/A");
-                        ui.label(util::human_readable_size(
-                            std::mem::size_of::<U8Vec4>()
-                                * gs.selected_model().gaussians.gaussians.capacity(),
-                        ));
-                        ui.end_row();
-
-                        ui.label("Spherical Harmonics");
-                        egui::ComboBox::from_id_salt("initialize_scene_sh_compression")
-                            .width(150.0)
-                            .selected_text(compressions.sh.to_string())
-                            .show_ui(ui, |ui| {
-                                for sh in app::ShCompression::iter() {
-                                    ui.selectable_value(&mut compressions.sh, sh, sh.to_string());
-                                }
-
-                                gs.compressions.sh = compressions.sh;
-                            });
-                        ui.label(util::human_readable_size(
-                            match compressions.sh {
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                                 app::ShCompression::Single => std::mem::size_of::<
                                     <gs::GaussianShSingleConfig as gs::GaussianShConfig>::Field,
                                 >(),
@@ -1910,7 +1459,6 @@ impl Scene {
                                 app::ShCompression::Remove => std::mem::size_of::<
                                     <gs::GaussianShNoneConfig as gs::GaussianShConfig>::Field,
                                 >(),
-<<<<<<< HEAD
                             } * gs.selected_model().gaussians.gaussians.capacity(),  // 乘以容量
                         ));
                         ui.end_row();  // 结束行
@@ -1924,18 +1472,6 @@ impl Scene {
                                 // 遍历所有协方差压缩选项
                                 for cov3d in app::Cov3dCompression::iter() {
                                     // 可选择的值
-=======
-                            } * gs.selected_model().gaussians.gaussians.capacity(),
-                        ));
-                        ui.end_row();
-
-                        ui.label("Covariance 3D");
-                        egui::ComboBox::from_id_salt("loading_scene_cov3d_compression")
-                            .width(150.0)
-                            .selected_text(compressions.cov3d.to_string())
-                            .show_ui(ui, |ui| {
-                                for cov3d in app::Cov3dCompression::iter() {
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                                     ui.selectable_value(
                                         &mut compressions.cov3d,
                                         cov3d,
@@ -1943,17 +1479,10 @@ impl Scene {
                                     );
                                 }
 
-<<<<<<< HEAD
                                 gs.compressions.cov3d = compressions.cov3d;  // 更新全局设置
                             });
                         ui.label(util::human_readable_size(  // 人类可读尺寸
                             match compressions.cov3d {  // 根据压缩类型计算尺寸
-=======
-                                gs.compressions.cov3d = compressions.cov3d;
-                            });
-                        ui.label(util::human_readable_size(
-                            match compressions.cov3d {
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                                 app::Cov3dCompression::Single => std::mem::size_of::<
                                     <gs::GaussianCov3dSingleConfig as gs::GaussianCov3dConfig>
                                         ::Field,
@@ -1962,7 +1491,6 @@ impl Scene {
                                     <gs::GaussianCov3dHalfConfig as gs::GaussianCov3dConfig>
                                         ::Field,
                                 >(),
-<<<<<<< HEAD
                             } * gs.selected_model().gaussians.gaussians.capacity(),  // 乘以容量
                         ));
                         ui.end_row();  // 结束行
@@ -1971,22 +1499,12 @@ impl Scene {
                 ui.label("");  // 空标签
 
                 // 显示高斯数量
-=======
-                            } * gs.selected_model().gaussians.gaussians.capacity(),
-                        ));
-                        ui.end_row();
-                    });
-
-                ui.label("");
-
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                 ui.label(format!(
                     "Gaussian Count: {}",
                     gs.selected_model()
                         .gaussians
                         .gaussians
                         .capacity()
-<<<<<<< HEAD
                         .to_formatted_string(&num_format::Locale::en)  // 格式化数字
                 ));
 
@@ -1999,23 +1517,10 @@ impl Scene {
                     )
                 ));
                 // 显示压缩后尺寸
-=======
-                        .to_formatted_string(&num_format::Locale::en)
-                ));
-
-                ui.label(format!(
-                    "Original Size: {}",
-                    util::human_readable_size(
-                        gs.selected_model().gaussians.gaussians.capacity()
-                            * std::mem::size_of::<gs::PlyGaussianPod>()
-                    )
-                ));
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                 ui.label(format!(
                     "Compressed Size: {}",
                     util::human_readable_size(
                         compressions
-<<<<<<< HEAD
                             .compressed_size(gs.selected_model().gaussians.gaussians.capacity())  // 压缩后的尺寸
                     )
                 ));
@@ -2026,15 +1531,6 @@ impl Scene {
                     // 如果点击了确认按钮
                     if ui.button("Confirm").clicked() {
                         // 定义压缩类型组合宏
-=======
-                            .compressed_size(gs.selected_model().gaussians.gaussians.capacity())
-                    )
-                ));
-                ui.label("");
-
-                ui.horizontal(|ui| {
-                    if ui.button("Confirm").clicked() {
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                         macro_rules! case {
                             ($sh:ident, $cov3d:ident) => {
                                 app::Compressions {
@@ -2044,17 +1540,11 @@ impl Scene {
                             };
                         }
 
-<<<<<<< HEAD
                         // 定义新建资源宏
                         macro_rules! new {
                             ($sh:ident, $cov3d:ident, $frame:expr, $gs:expr) => {
                                 paste::paste! {
                                     // 插入场景资源
-=======
-                        macro_rules! new {
-                            ($sh:ident, $cov3d:ident, $frame:expr, $gs:expr) => {
-                                paste::paste! {
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                                     frame
                                         .wgpu_render_state()
                                         .expect("render state")
@@ -2063,26 +1553,16 @@ impl Scene {
                                         .callback_resources
                                         .insert(SceneResource::<
                                             gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]
-<<<<<<< HEAD
                                         >::new(  // 创建新的场景资源
                                             $frame.wgpu_render_state().expect("render state"),  // 渲染状态
                                             $gs.selected_model().file_name.clone(),            // 文件名
                                             $gs.selected_model().gaussians.gaussians.capacity(), // 容量
-=======
-                                        >::new(
-                                            $frame.wgpu_render_state().expect("render state"),
-                                            $gs.selected_model().file_name.clone(),
-                                            $gs.selected_model().gaussians.gaussians.capacity(),
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                                         ))
                                 }
                             };
                         }
 
-<<<<<<< HEAD
                         // 根据压缩设置创建相应的资源
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                         match compressions {
                             case!(Single, Single) => {
                                 new!(Single, Single, frame, gs);
@@ -2110,7 +1590,6 @@ impl Scene {
                             }
                         }
 
-<<<<<<< HEAD
                         return Ok(Some(true));  // 返回确认
                     }
 
@@ -2120,16 +1599,6 @@ impl Scene {
                     }
 
                     Ok(None)  // 返回未确认
-=======
-                        return Ok(Some(true));
-                    }
-
-                    if ui.button("Cancel").clicked() {
-                        return Ok(Some(false));
-                    }
-
-                    Ok(None)
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
                 })
                 .inner
             })
@@ -3016,15 +2485,12 @@ pub struct SceneResource<G: gs::GaussianPod> {
 
     /// The mask gizmos.
     pub mask_gizmos: HashMap<String, MaskGizmosResource>,
-<<<<<<< HEAD
 
     /// VR右眼viewer（用于VR模式的立体视觉）
     pub vr_right_eye_viewer: Option<Arc<Mutex<gs::MultiModelViewer<G>>>>,
     
     /// VR viewer数据是否已同步
     pub vr_data_synced: bool,
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
 }
 
 impl<G: gs::GaussianPod> SceneResource<G> {
@@ -3110,11 +2576,7 @@ impl<G: gs::GaussianPod> SceneResource<G> {
             &mut mask_gizmos,
             render_state,
             &mask_evaluator,
-<<<<<<< HEAD
             key.clone(),
-=======
-            key,
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
             count,
         );
 
@@ -3122,13 +2584,10 @@ impl<G: gs::GaussianPod> SceneResource<G> {
 
         log::info!("Scene loaded");
 
-<<<<<<< HEAD
         // VR右眼viewer将在需要时延迟创建，避免资源浪费
         let vr_right_eye_viewer = None;
         let vr_data_synced = false;
 
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
         Self {
             viewer,
             measurement_renderer,
@@ -3140,7 +2599,6 @@ impl<G: gs::GaussianPod> SceneResource<G> {
             show_unedited_model: false,
             mask_evaluator,
             mask_gizmos,
-<<<<<<< HEAD
             vr_right_eye_viewer,
             vr_data_synced,
         }
@@ -3242,11 +2700,6 @@ impl<G: gs::GaussianPod> SceneResource<G> {
         log::info!("✅ [VR DEBUG] VR viewer data sync completed and marked as synced");
     }
 
-=======
-        }
-    }
-
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
     /// Load Gaussians for a model.
     fn load_model(
         &mut self,
@@ -3255,12 +2708,9 @@ impl<G: gs::GaussianPod> SceneResource<G> {
         start: usize,
         gaussians: &[gs::Gaussian],
     ) {
-<<<<<<< HEAD
         log::debug!("🔄 [VR DEBUG] Loading model '{}': start={}, gaussians_count={}", key, start, gaussians.len());
         
         // 更新主viewer
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
         self.viewer
             .lock()
             .expect("viewer")
@@ -3270,7 +2720,6 @@ impl<G: gs::GaussianPod> SceneResource<G> {
             .gaussian_buffers
             .gaussians_buffer
             .update_range(&render_state.queue, start, gaussians);
-<<<<<<< HEAD
 
         // 更新VR右眼viewer（如果存在且有该模型）
         if let Some(vr_viewer) = &self.vr_right_eye_viewer {
@@ -3290,16 +2739,11 @@ impl<G: gs::GaussianPod> SceneResource<G> {
         } else {
             log::debug!("ℹ️ [VR DEBUG] VR right eye viewer not created yet during load_model");
         }
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
     }
 
     /// Add a new model.
     fn add_model(&mut self, render_state: &egui_wgpu::RenderState, key: String, count: usize) {
-<<<<<<< HEAD
         // 添加到主viewer
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
         let mut viewer = self.viewer.lock().expect("viewer");
         Self::add_model_with_viewer(
             &mut viewer,
@@ -3307,7 +2751,6 @@ impl<G: gs::GaussianPod> SceneResource<G> {
             &mut self.mask_gizmos,
             render_state,
             &self.mask_evaluator,
-<<<<<<< HEAD
             key.clone(),
             count,
         );
@@ -3333,11 +2776,6 @@ impl<G: gs::GaussianPod> SceneResource<G> {
         } else {
             log::debug!("ℹ️ [VR DEBUG] VR right eye viewer not created yet, skipping VR model addition");
         }
-=======
-            key,
-            count,
-        );
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
     }
 
     /// Add a new model with a viewer.
@@ -3415,7 +2853,6 @@ impl<G: gs::GaussianPod> SceneResource<G> {
             return;
         }
 
-<<<<<<< HEAD
         // 从主viewer移除
         self.viewer.lock().expect("viewer").remove_model(key);
         
@@ -3423,9 +2860,6 @@ impl<G: gs::GaussianPod> SceneResource<G> {
         if let Some(vr_viewer) = &self.vr_right_eye_viewer {
             vr_viewer.lock().expect("vr viewer").remove_model(key);
         }
-=======
-        self.viewer.lock().expect("viewer").remove_model(key);
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
     }
 
     /// Update the measurement visible hit pair.
@@ -3508,12 +2942,9 @@ struct SceneCallback<G: gs::GaussianPod + Send + Sync> {
     /// The query.
     query: Query,
 
-<<<<<<< HEAD
     /// Whether this is the right eye in VR mode.
     is_vr_right_eye: bool,
 
-=======
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
     /// The phantom data.
     phantom: PhantomData<G>,
 }
@@ -3535,7 +2966,6 @@ impl<G: gs::GaussianPod + Send + Sync> egui_wgpu::CallbackTrait for SceneCallbac
             unedited_models,
             show_unedited_model,
             mask_gizmos,
-<<<<<<< HEAD
             vr_right_eye_viewer,
             ..
         } = callback_resources.get().expect("scene resource");
@@ -3555,11 +2985,6 @@ impl<G: gs::GaussianPod + Send + Sync> egui_wgpu::CallbackTrait for SceneCallbac
             viewer
         };
 
-=======
-            ..
-        } = callback_resources.get().expect("scene resource");
-
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
         for key in self.model_render_keys.iter() {
             let gizmo = mask_gizmos.get(key).expect("gizmo");
 
@@ -3577,7 +3002,6 @@ impl<G: gs::GaussianPod + Send + Sync> egui_wgpu::CallbackTrait for SceneCallbac
         }
 
         {
-<<<<<<< HEAD
             let active_viewer_locked = active_viewer.lock().expect("active viewer");
             
             log::debug!("🎨 [VR DEBUG] Rendering {} models with {} (VR right eye: {})", 
@@ -3614,22 +3038,6 @@ impl<G: gs::GaussianPod + Send + Sync> egui_wgpu::CallbackTrait for SceneCallbac
                 } else {
                     log::error!("❌ [VR DEBUG] Model '{}' not found in main viewer", key);
                 }
-=======
-            let viewer = viewer.lock().expect("viewer");
-
-            for key in self.model_render_keys.iter() {
-                let model = &viewer.models.get(key).expect("model");
-                let unedited_model = unedited_models.get(key).expect("unedited model");
-
-                viewer.renderer.render_with_pass(
-                    render_pass,
-                    match show_unedited_model {
-                        true => &unedited_model.renderer_bind_group,
-                        false => &model.bind_groups.renderer,
-                    },
-                    &model.gaussian_buffers.indirect_args_buffer,
-                );
->>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
             }
         }
 
