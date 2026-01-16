@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // 定义模块声明 - 这些是当前库的内部模块
 mod app; // 声明 app 模块，该模块定义在 app.rs 文件中
 mod renderer; // 声明 renderer 模块，该模块定义在 renderer/mod.rs 或 renderer.rs 文件中
@@ -22,3 +23,11 @@ pub use app::App;
 // tab: 包含 UI 标签页功能
 // util: 包含通用工具函数
 // 这种结构使代码更易于组织和维护，同时通过 pub use 控制哪些功能对外部可见，形成清晰的公共 API。
+=======
+mod app;
+mod renderer;
+mod tab;
+mod util;
+
+pub use app::App;
+>>>>>>> 4fe8ff633a4952b25cff21a424f9472303fa7488
