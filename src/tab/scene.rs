@@ -330,7 +330,7 @@ impl Scene {
             // 添加VR视差强度滑块（仅在VR模式下显示）
             if self.vr_mode {
                 ui.separator();
-                ui.label("👁️Parallax:");
+                ui.label("👀 Parallax:");
                 ui.add(egui::Slider::new(&mut self.vr_parallax_strength, 0.0..=5.0)
                     .fixed_decimals(1));
             }
