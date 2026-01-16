@@ -113,6 +113,9 @@ pub struct Scene {
 
     /// VR mode toggle
     vr_mode: bool,
+    
+    /// VR parallax strength (IPD multiplier)
+    vr_parallax_strength: f32,
 }
 
 impl Tab for Scene {
@@ -128,6 +131,7 @@ impl Tab for Scene {
             query: Query::none(),
             query_result: None,
             vr_mode: false, // 默认关闭VR模式
+            vr_parallax_strength: 1.0, // 默认视差强度为1.0
         }
     }
 
@@ -318,7 +322,20 @@ impl Scene {
         // UI
         ui.horizontal(|ui| {
             // 添加VR模式开关
-            ui.checkbox(&mut self.vr_mode, "VR Mode");
+            let vr_changed = ui.checkbox(&mut self.vr_mode, "VR Mode").changed();
+            if vr_changed {
+                log::info!("🔄 [VR DEBUG] VR mode toggled: {}", self.vr_mode);
+            }
+            
+            // 添加VR视差强度滑块（仅在VR模式下显示）
+            if self.vr_mode {
+                ui.separator();
+                ui.label("👁️Parallax:");
+                ui.add(egui::Slider::new(&mut self.vr_parallax_strength, 0.0..=5.0)
+                    .fixed_decimals(1));
+            }
+
+            ui.separator();
 
             let loaded_label = ui.label(format!(
                 "📦 Loaded: {}",
@@ -483,7 +500,7 @@ impl Scene {
                     let total_width = ui.available_width();
                     let window_width = (total_width / 2.0) - 2.0; // 减去一点空间避免溢出
                     
-                    // 左侧窗口
+                    // 左侧窗口（左眼）
                     ui.scope(|ui| {
                         ui.set_min_width(window_width);
                         ui.set_max_width(window_width);
@@ -587,6 +604,7 @@ impl Scene {
                                                     .map(|(k, _)| k.clone())
                                                     .collect(),
                                                 query: self.query.clone(),
+                                                is_vr_right_eye: false, // 左眼
                                                 phantom: PhantomData,
                                             },
                                         ))
@@ -598,7 +616,7 @@ impl Scene {
                         });
                     });
                     
-                    // 右侧窗口
+                    // 右侧窗口（右眼）
                     ui.scope(|ui| {
                         ui.set_min_width(window_width);
                         ui.set_max_width(window_width);
@@ -647,18 +665,38 @@ impl Scene {
                             let (right_rect, right_response) =
                                 ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
 
-                            // 对于右眼窗口，我们只做渲染，不需要重复postprocess和preprocess
+                            // 右眼窗口：使用相同的输入处理，但渲染时会应用相机偏移
                             if self.query_result.is_none() {
                                 self.input.handle(ui, gs, &mut self.query, &right_rect, &right_response);
                             }
 
+                            // 为右眼窗口执行相机偏移的预处理
+                            macro_rules! preprocess_vr_right {
+                                ($sh:ident, $cov3d:ident, $self:expr, $frame:expr, $rect:expr, $gs:expr) => {
+                                    paste::paste! {
+                                        $self.loaded_preprocess_with_camera_offset::<
+                                            gs::[< GaussianPodWithSh $sh Cov3d $cov3d Configs >]
+                                        >($frame, $rect, $gs, true, true)
+                                    }
+                                };
+                            }
+
+                            apply!(preprocess_vr_right, gs, self, frame, &right_rect, gs);
+
+                            // 为右眼计算距离时使用偏移后的相机位置
+                            let modified_camera_pos = Vec3::new(
+                                -gs.camera.control.pos().x, 
+                                gs.camera.control.pos().y, 
+                                gs.camera.control.pos().z
+                            );
+                            
                             let distances = gs
                                 .models
                                 .iter()
                                 .map(|(k, m)| {
                                     (
                                         k,
-                                        (m.world_center() - gs.camera.control.pos()).length_squared(),
+                                        (m.world_center() - modified_camera_pos).length_squared(),
                                     )
                                 })
                                 .collect::<HashMap<_, _>>();
@@ -679,6 +717,7 @@ impl Scene {
                                                     .map(|(k, _)| k.clone())
                                                     .collect(),
                                                 query: self.query.clone(),
+                                                is_vr_right_eye: true, // 右眼
                                                 phantom: PhantomData,
                                             },
                                         ))
@@ -806,6 +845,7 @@ impl Scene {
                                         .map(|(k, _)| k.clone())  // 获取键
                                         .collect(),
                                     query: self.query.clone(),     // 当前查询
+                                    is_vr_right_eye: false,       // 非VR模式
                                     phantom: PhantomData,          // 幽灵数据，用于泛型
                                 },
                             ))
@@ -971,6 +1011,159 @@ impl Scene {
         rect: &egui::Rect,
         gs: &mut app::GaussianSplatting,
     ) {
+        // 在VR模式下，左眼也需要偏移（向左）
+        self.loaded_preprocess_with_camera_offset::<G>(frame, rect, gs, false, self.vr_mode);
+    }
+
+    /// 执行预处理（支持VR相机偏移）
+    fn loaded_preprocess_with_camera_offset<G: gs::GaussianPod>(
+        &mut self,
+        frame: &mut eframe::Frame,
+        rect: &egui::Rect,
+        gs: &mut app::GaussianSplatting,
+        is_vr_right_eye: bool,
+        apply_vr_offset: bool,
+    ) {
+        if is_vr_right_eye {
+            // VR右眼模式：使用独立的VR viewer
+            log::info!("🎯 [VR DEBUG] *** STARTING VR RIGHT EYE PREPROCESS ***");
+            
+            let egui_wgpu::RenderState {
+                device,
+                queue,
+                renderer,
+                ..
+            } = frame.wgpu_render_state().expect("render state");
+            
+            log::debug!("📊 [VR DEBUG] Got render state for VR preprocess");
+            
+            let mut renderer = renderer.write();
+            let scene_resource = renderer
+                .callback_resources
+                .get_mut::<SceneResource<G>>()
+                .expect("scene resource");
+            
+            log::debug!("📊 [VR DEBUG] Got scene resource for VR preprocess");
+            
+            // 确保VR viewer存在
+            scene_resource.ensure_vr_viewer(frame.wgpu_render_state().expect("render state"));
+            
+            // 同步VR viewer的数据（从app state的gaussians Vec）
+            scene_resource.sync_vr_viewer_data(
+                frame.wgpu_render_state().expect("render state"),
+                &gs.models,
+            );
+            
+            if let Some(vr_viewer) = &scene_resource.vr_right_eye_viewer {
+                log::debug!("📊 [VR DEBUG] VR viewer exists, proceeding with preprocess");
+                let mut vr_viewer = vr_viewer.lock().expect("vr viewer");
+                let viewer_size = Vec2::from_array(rect.size().into()).as_uvec2();
+                
+                log::debug!("📊 [VR DEBUG] VR viewer has {} models, selected_key: '{}'", 
+                    vr_viewer.models.len(), 
+                    gs.selected_model_key
+                );
+                
+                // 检查VR viewer是否有选中的模型
+                if !vr_viewer.models.contains_key(&gs.selected_model_key) {
+                    log::error!("❌ [VR DEBUG] VR viewer does not have selected model '{}', available models: {:?}", 
+                        gs.selected_model_key,
+                        vr_viewer.models.keys().collect::<Vec<_>>()
+                    );
+                    return; // 如果VR viewer没有该模型，直接返回
+                }
+                
+                log::debug!("✅ [VR DEBUG] VR viewer has selected model '{}'", gs.selected_model_key);
+                
+                // 更新VR viewer的查询纹理尺寸（如果需要）
+                let wgpu::Extent3d { width, height, .. } =
+                    vr_viewer.world_buffers.query_texture.texture().size();
+                let texture_size = uvec2(width, height);
+                
+                if texture_size != viewer_size {
+                    log::debug!("🔄 [VR DEBUG] Updating VR viewer query texture size from {:?} to {:?}", texture_size, viewer_size);
+                    vr_viewer.update_query_texture_size(device, viewer_size);
+                }
+                
+                // 不再修改相机位置，保持原始相机
+                // 更新VR右窗口viewer的相机（使用原始相机）
+                vr_viewer.update_camera(queue, &gs.camera.control, viewer_size);
+                log::debug!("📷 [VR DEBUG] Updated VR camera (no offset)");
+                
+                // 基础IPD（眼间距）
+                const BASE_IPD: f32 = 0.065;
+                
+                // 使用视差强度参数（从UI滑块获取）
+                let effective_ipd = BASE_IPD * self.vr_parallax_strength;
+                
+                // 右窗口：模型向右偏移（修正）
+                let mut modified_model_pos = gs.selected_model().transform.pos;
+                modified_model_pos.x += effective_ipd / 2.0;
+                
+                log::info!("👁️ [VR DEBUG] RIGHT window - Parallax strength: {:.1}×, Model X offset: +{:.3}", 
+                    self.vr_parallax_strength, effective_ipd / 2.0);
+                
+                // 更新VR右窗口viewer的模型变换（使用偏移后的模型位置）
+                vr_viewer.update_model_transform(
+                    queue,
+                    &gs.selected_model_key,
+                    modified_model_pos,  // 使用偏移后的位置
+                    gs.selected_model().transform.quat(),
+                    gs.selected_model().transform.scale,
+                );
+                log::debug!("🔄 [VR DEBUG] Updated VR model transform with offset");
+                
+                vr_viewer.update_gaussian_transform(
+                    queue,
+                    gs.gaussian_transform.size,
+                    gs.gaussian_transform.display_mode,
+                    gs.gaussian_transform.sh_deg,
+                    gs.gaussian_transform.no_sh0,
+                );
+                log::debug!("🔄 [VR DEBUG] Updated VR gaussian transform");
+                
+                // 🔑 关键修复：执行VR viewer的预处理和排序管线
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("VR Preprocess Encoder"),
+                });
+                
+                // 对所有可见模型执行预处理和排序
+                for key in gs.models.iter().filter(|(_, m)| m.visible).map(|(k, _)| k) {
+                    if let Some(vr_model) = vr_viewer.models.get(key) {
+                        log::debug!("🎨 [VR DEBUG] Preprocessing and sorting model '{}'", key);
+                        
+                        // 执行预处理
+                        vr_viewer.preprocessor.preprocess(
+                            &mut encoder,
+                            &vr_model.bind_groups.preprocessor,
+                            vr_model.gaussian_buffers.gaussians_buffer.len() as u32,
+                        );
+                        
+                        // 执行基数排序
+                        vr_viewer.radix_sorter.sort(
+                            &mut encoder,
+                            &vr_model.bind_groups.radix_sorter,
+                            &vr_model.gaussian_buffers.radix_sort_indirect_args_buffer,
+                        );
+                        
+                        log::debug!("✅ [VR DEBUG] Preprocessed and sorted model '{}'", key);
+                    }
+                }
+                
+                queue.submit(Some(encoder.finish()));
+                device.poll(wgpu::Maintain::Wait);
+                
+                log::debug!("✅ [VR DEBUG] VR preprocess and sort pipeline completed");
+                
+                log::info!("✅ [VR DEBUG] VR right eye preprocess completed successfully");
+            } else {
+                log::error!("❌ [VR DEBUG] VR right eye viewer is None during preprocess!");
+            }
+            
+            return;
+        }
+        
+        // 正常模式：执行完整预处理
         // 解构渲染状态
         let egui_wgpu::RenderState {
             device,
@@ -1073,12 +1266,34 @@ impl Scene {
                 query_toolset.render(queue, &mut encoder, &viewer.world_buffers.query_texture);
             }
 
-            // 更新查看器
-            viewer.update_camera(queue, &gs.camera.control, viewer_size);  // 更新相机
+            // 更新查看器相机（不再修改相机位置）
+            viewer.update_camera(queue, &gs.camera.control, viewer_size);
+            
+            // 在VR模式下，通过偏移模型位置来创建立体效果
+            let model_pos = if apply_vr_offset {
+                let mut modified_pos = gs.selected_model().transform.pos;
+                
+                // 基础IPD（眼间距）
+                const BASE_IPD: f32 = 0.065;
+                
+                // 使用视差强度参数（从UI滑块获取）
+                let effective_ipd = BASE_IPD * self.vr_parallax_strength;
+                
+                // 左窗口：模型向左偏移（修正）
+                modified_pos.x -= effective_ipd / 2.0;
+                
+                log::debug!("👁️ [VR DEBUG] LEFT window - Parallax strength: {:.1}×, Model X offset: -{:.3}", 
+                    self.vr_parallax_strength, effective_ipd / 2.0);
+                
+                modified_pos
+            } else {
+                gs.selected_model().transform.pos
+            };
+            
             viewer.update_model_transform(  // 更新模型变换
                 queue,
                 &gs.selected_model_key,         // 模型键
-                gs.selected_model().transform.pos,  // 位置
+                model_pos,  // 位置（VR模式下已偏移）
                 gs.selected_model().transform.quat(),  // 四元数
                 gs.selected_model().transform.scale,   // 缩放
             );
@@ -2270,6 +2485,12 @@ pub struct SceneResource<G: gs::GaussianPod> {
 
     /// The mask gizmos.
     pub mask_gizmos: HashMap<String, MaskGizmosResource>,
+
+    /// VR右眼viewer（用于VR模式的立体视觉）
+    pub vr_right_eye_viewer: Option<Arc<Mutex<gs::MultiModelViewer<G>>>>,
+    
+    /// VR viewer数据是否已同步
+    pub vr_data_synced: bool,
 }
 
 impl<G: gs::GaussianPod> SceneResource<G> {
@@ -2355,13 +2576,17 @@ impl<G: gs::GaussianPod> SceneResource<G> {
             &mut mask_gizmos,
             render_state,
             &mask_evaluator,
-            key,
+            key.clone(),
             count,
         );
 
         std::mem::drop(locked_viewer);
 
         log::info!("Scene loaded");
+
+        // VR右眼viewer将在需要时延迟创建，避免资源浪费
+        let vr_right_eye_viewer = None;
+        let vr_data_synced = false;
 
         Self {
             viewer,
@@ -2374,7 +2599,105 @@ impl<G: gs::GaussianPod> SceneResource<G> {
             show_unedited_model: false,
             mask_evaluator,
             mask_gizmos,
+            vr_right_eye_viewer,
+            vr_data_synced,
         }
+    }
+
+    /// 确保VR右眼viewer存在（延迟创建）
+    fn ensure_vr_viewer(&mut self, render_state: &egui_wgpu::RenderState) {
+        if self.vr_right_eye_viewer.is_none() {
+            log::info!("🔧 [VR DEBUG] Creating VR right eye viewer on demand");
+            
+            // 创建VR右眼viewer
+            let vr_viewer = Arc::new(Mutex::new(gs::MultiModelViewer::new_with(
+                &render_state.device,
+                render_state.target_format,
+                Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: false,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                uvec2(1, 1),
+            )));
+            
+            // 将主viewer中的所有模型复制到VR viewer
+            let main_viewer = self.viewer.lock().expect("main viewer");
+            let mut vr_viewer_locked = vr_viewer.lock().expect("vr viewer");
+            
+            for (key, _main_model) in main_viewer.models.iter() {
+                log::info!("📦 [VR DEBUG] Copying model structure '{}' to VR viewer", key);
+                
+                // 获取模型的高斯数量
+                let gaussian_count = _main_model.gaussian_buffers.gaussians_buffer.len();
+                
+                // 为VR viewer创建独立的资源
+                let mut vr_unedited_models = HashMap::new();
+                let mut vr_mask_gizmos = HashMap::new();
+                
+                Self::add_model_with_viewer(
+                    &mut vr_viewer_locked,
+                    &mut vr_unedited_models,
+                    &mut vr_mask_gizmos,
+                    render_state,
+                    &self.mask_evaluator,
+                    key.clone(),
+                    gaussian_count,
+                );
+                
+                log::info!("✅ [VR DEBUG] Model structure '{}' created with {} gaussian slots", key, gaussian_count);
+            }
+            
+            drop(main_viewer);
+            drop(vr_viewer_locked);
+            
+            self.vr_right_eye_viewer = Some(vr_viewer);
+            log::info!("✅ [VR DEBUG] VR right eye viewer created successfully");
+        }
+    }
+    
+    /// 同步VR viewer的所有模型数据（从app state的gaussians Vec复制）
+    fn sync_vr_viewer_data(
+        &mut self,
+        render_state: &egui_wgpu::RenderState,
+        gs_models: &HashMap<String, app::GaussianSplattingModel>,
+    ) {
+        // 如果已经同步过，直接返回
+        if self.vr_data_synced || self.vr_right_eye_viewer.is_none() {
+            return;
+        }
+        
+        log::info!("🔄 [VR DEBUG] Starting VR viewer data synchronization (first time only)");
+        
+        let vr_viewer = self.vr_right_eye_viewer.as_ref().unwrap();
+        let vr_viewer_locked = vr_viewer.lock().expect("vr viewer");
+        
+        for (key, gs_model) in gs_models.iter() {
+            if let Some(vr_model) = vr_viewer_locked.models.get(key) {
+                let gaussian_count = gs_model.gaussians.gaussians.len();
+                
+                if gaussian_count > 0 {
+                    log::info!("🔄 [VR DEBUG] Syncing {} gaussians for model '{}'", gaussian_count, key);
+                    
+                    // 直接从app state的gaussians Vec上传数据到VR viewer
+                    vr_model
+                        .gaussian_buffers
+                        .gaussians_buffer
+                        .update_range(&render_state.queue, 0, &gs_model.gaussians.gaussians);
+                    
+                    log::info!("✅ [VR DEBUG] Successfully synced {} gaussians for model '{}'", gaussian_count, key);
+                }
+            }
+        }
+        
+        drop(vr_viewer_locked);
+        
+        // 标记为已同步，避免重复同步
+        self.vr_data_synced = true;
+        
+        log::info!("✅ [VR DEBUG] VR viewer data sync completed and marked as synced");
     }
 
     /// Load Gaussians for a model.
@@ -2385,6 +2708,9 @@ impl<G: gs::GaussianPod> SceneResource<G> {
         start: usize,
         gaussians: &[gs::Gaussian],
     ) {
+        log::debug!("🔄 [VR DEBUG] Loading model '{}': start={}, gaussians_count={}", key, start, gaussians.len());
+        
+        // 更新主viewer
         self.viewer
             .lock()
             .expect("viewer")
@@ -2394,10 +2720,30 @@ impl<G: gs::GaussianPod> SceneResource<G> {
             .gaussian_buffers
             .gaussians_buffer
             .update_range(&render_state.queue, start, gaussians);
+
+        // 更新VR右眼viewer（如果存在且有该模型）
+        if let Some(vr_viewer) = &self.vr_right_eye_viewer {
+            let vr_viewer_locked = vr_viewer.lock().expect("vr viewer");
+            if let Some(vr_model) = vr_viewer_locked.models.get(key) {
+                log::debug!("✅ [VR DEBUG] Updating VR viewer model '{}' with {} gaussians", key, gaussians.len());
+                vr_model
+                    .gaussian_buffers
+                    .gaussians_buffer
+                    .update_range(&render_state.queue, start, gaussians);
+            } else {
+                log::warn!("⚠️ [VR DEBUG] VR viewer does not have model '{}', available models: {:?}", 
+                    key, 
+                    vr_viewer_locked.models.keys().collect::<Vec<_>>()
+                );
+            }
+        } else {
+            log::debug!("ℹ️ [VR DEBUG] VR right eye viewer not created yet during load_model");
+        }
     }
 
     /// Add a new model.
     fn add_model(&mut self, render_state: &egui_wgpu::RenderState, key: String, count: usize) {
+        // 添加到主viewer
         let mut viewer = self.viewer.lock().expect("viewer");
         Self::add_model_with_viewer(
             &mut viewer,
@@ -2405,9 +2751,31 @@ impl<G: gs::GaussianPod> SceneResource<G> {
             &mut self.mask_gizmos,
             render_state,
             &self.mask_evaluator,
-            key,
+            key.clone(),
             count,
         );
+        drop(viewer); // 释放锁
+
+        // 只有在VR viewer已经存在时才添加到VR右眼viewer
+        if let Some(vr_viewer) = &self.vr_right_eye_viewer {
+            log::info!("🔧 [VR DEBUG] Adding model '{}' to existing VR right eye viewer", key);
+            let mut vr_viewer = vr_viewer.lock().expect("vr viewer");
+            // 为VR viewer创建独立的unedited_models和mask_gizmos（但我们不需要存储它们）
+            let mut vr_unedited_models = HashMap::new();
+            let mut vr_mask_gizmos = HashMap::new();
+            Self::add_model_with_viewer(
+                &mut vr_viewer,
+                &mut vr_unedited_models,
+                &mut vr_mask_gizmos,
+                render_state,
+                &self.mask_evaluator,
+                key.clone(),
+                count,
+            );
+            log::info!("✅ [VR DEBUG] VR viewer now has {} models after adding '{}'", vr_viewer.models.len(), key);
+        } else {
+            log::debug!("ℹ️ [VR DEBUG] VR right eye viewer not created yet, skipping VR model addition");
+        }
     }
 
     /// Add a new model with a viewer.
@@ -2485,7 +2853,13 @@ impl<G: gs::GaussianPod> SceneResource<G> {
             return;
         }
 
+        // 从主viewer移除
         self.viewer.lock().expect("viewer").remove_model(key);
+        
+        // 从VR右眼viewer移除
+        if let Some(vr_viewer) = &self.vr_right_eye_viewer {
+            vr_viewer.lock().expect("vr viewer").remove_model(key);
+        }
     }
 
     /// Update the measurement visible hit pair.
@@ -2568,6 +2942,9 @@ struct SceneCallback<G: gs::GaussianPod + Send + Sync> {
     /// The query.
     query: Query,
 
+    /// Whether this is the right eye in VR mode.
+    is_vr_right_eye: bool,
+
     /// The phantom data.
     phantom: PhantomData<G>,
 }
@@ -2589,8 +2966,24 @@ impl<G: gs::GaussianPod + Send + Sync> egui_wgpu::CallbackTrait for SceneCallbac
             unedited_models,
             show_unedited_model,
             mask_gizmos,
+            vr_right_eye_viewer,
             ..
         } = callback_resources.get().expect("scene resource");
+
+        // 选择使用哪个viewer进行渲染
+        let active_viewer = if self.is_vr_right_eye {
+            log::info!("🎯 [VR DEBUG] SceneCallback: Rendering VR right eye");
+            if let Some(vr_viewer) = vr_right_eye_viewer {
+                log::info!("✅ [VR DEBUG] Using VR right eye viewer for rendering");
+                vr_viewer
+            } else {
+                log::error!("❌ [VR DEBUG] VR viewer is None, falling back to main viewer");
+                viewer // 如果VR viewer不存在，回退到主viewer
+            }
+        } else {
+            log::debug!("👁️ [VR DEBUG] SceneCallback: Rendering main viewer (left eye)");
+            viewer
+        };
 
         for key in self.model_render_keys.iter() {
             let gizmo = mask_gizmos.get(key).expect("gizmo");
@@ -2609,20 +3002,42 @@ impl<G: gs::GaussianPod + Send + Sync> egui_wgpu::CallbackTrait for SceneCallbac
         }
 
         {
-            let viewer = viewer.lock().expect("viewer");
+            let active_viewer_locked = active_viewer.lock().expect("active viewer");
+            
+            log::debug!("🎨 [VR DEBUG] Rendering {} models with {} (VR right eye: {})", 
+                self.model_render_keys.len(),
+                if self.is_vr_right_eye { "VR viewer" } else { "main viewer" },
+                self.is_vr_right_eye
+            );
 
             for key in self.model_render_keys.iter() {
-                let model = &viewer.models.get(key).expect("model");
-                let unedited_model = unedited_models.get(key).expect("unedited model");
+                // 检查模型是否存在于当前viewer中
+                if let Some(model) = active_viewer_locked.models.get(key) {
+                    let unedited_model = unedited_models.get(key).expect("unedited model");
+                    
+                    log::debug!("✅ [VR DEBUG] Rendering model '{}' with {} (VR: {})", 
+                        key, 
+                        if self.is_vr_right_eye { "VR viewer" } else { "main viewer" },
+                        self.is_vr_right_eye
+                    );
 
-                viewer.renderer.render_with_pass(
-                    render_pass,
-                    match show_unedited_model {
-                        true => &unedited_model.renderer_bind_group,
-                        false => &model.bind_groups.renderer,
-                    },
-                    &model.gaussian_buffers.indirect_args_buffer,
-                );
+                    active_viewer_locked.renderer.render_with_pass(
+                        render_pass,
+                        match show_unedited_model {
+                            true => &unedited_model.renderer_bind_group,
+                            false => &model.bind_groups.renderer,
+                        },
+                        &model.gaussian_buffers.indirect_args_buffer,
+                    );
+                } else if self.is_vr_right_eye {
+                    // 如果是VR右眼且模型不存在，记录警告但继续渲染其他模型
+                    log::error!("❌ [VR DEBUG] Model '{}' not found in VR right eye viewer, available models: {:?}", 
+                        key,
+                        active_viewer_locked.models.keys().collect::<Vec<_>>()
+                    );
+                } else {
+                    log::error!("❌ [VR DEBUG] Model '{}' not found in main viewer", key);
+                }
             }
         }
 
