@@ -106,3 +106,23 @@ We compile to [WASM](https://en.wikipedia.org/wiki/WebAssembly) and use [Trunk](
 >
 > `assets/sw.js` script will try to cache our app, and loads the cached version when it cannot connect to server allowing your app to work offline (like PWA).
 > appending `#dev` to `index.html` will skip this caching, allowing us to load the latest builds during development.
+
+### 部署到 GitHub Pages
+
+本项目包含使用 GitHub Actions 自动部署到 GitHub Pages 的功能。设置步骤如下：
+
+1. **启用 GitHub Pages**：进入仓库设置 → Pages → Source，选择 "GitHub Actions"。
+
+2. **推送到主分支**：当您推送到 `main` 分支时，部署工作流会自动触发。
+
+3. **访问您的应用**：部署完成后，您的应用将在 `https://yourusername.github.io/your-repo-name/` 可用。
+
+GitHub Actions 工作流（`.github/workflows/deploy.yml`）将会：
+- 安装 Rust 和 WASM 目标
+- 安装 Trunk
+- 使用正确的公共 URL 构建 Web 项目
+- 部署到 GitHub Pages
+
+> [!NOTE]
+>
+> 首次部署可能需要几分钟时间。后续部署由于缓存会更快。
