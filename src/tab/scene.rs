@@ -1,9 +1,9 @@
 // 定义标准库的导入
 use std::{
-    collections::HashMap,  // 导入 HashMap 类型
-    io::Cursor,          // 导入 Cursor 类型
-    marker::PhantomData,  // 导入 PhantomData 类型
-    sync::{Arc, Mutex, mpsc},  // 导入同步原语类型
+    collections::HashMap,     // 导入 HashMap 类型
+    io::Cursor,               // 导入 Cursor 类型
+    marker::PhantomData,      // 导入 PhantomData 类型
+    sync::{Arc, Mutex, mpsc}, // 导入同步原语类型
 };
 
 // 为 WebAssembly 32 位架构导入特定类型
@@ -113,7 +113,7 @@ pub struct Scene {
 
     /// VR mode toggle
     vr_mode: bool,
-    
+
     /// VR parallax strength (IPD multiplier)
     vr_parallax_strength: f32,
 }
@@ -130,7 +130,7 @@ impl Tab for Scene {
             initialized: false,
             query: Query::none(),
             query_result: None,
-            vr_mode: false, // 默认关闭VR模式
+            vr_mode: false,            // 默认关闭VR模式
             vr_parallax_strength: 1.0, // 默认视差强度为1.0
         }
     }
@@ -326,13 +326,14 @@ impl Scene {
             if vr_changed {
                 log::info!("🔄 [VR DEBUG] VR mode toggled: {}", self.vr_mode);
             }
-            
+
             // 添加VR视差强度滑块（仅在VR模式下显示）
             if self.vr_mode {
                 ui.separator();
                 ui.label("👀 Parallax:");
-                ui.add(egui::Slider::new(&mut self.vr_parallax_strength, 0.0..=5.0)
-                    .fixed_decimals(1));
+                ui.add(
+                    egui::Slider::new(&mut self.vr_parallax_strength, 0.0..=5.0).fixed_decimals(1),
+                );
             }
 
             ui.separator();
@@ -499,12 +500,12 @@ impl Scene {
                     // 确保左右窗口各占一半宽度，不留间隙
                     let total_width = ui.available_width();
                     let window_width = (total_width / 2.0) - 2.0; // 减去一点空间避免溢出
-                    
+
                     // 左侧窗口（左眼）
                     ui.scope(|ui| {
                         ui.set_min_width(window_width);
                         ui.set_max_width(window_width);
-                        
+
                         egui::Frame::canvas(ui.style()).show(ui, |ui| {
                             macro_rules! case {
                                 ($sh:ident, $cov3d:ident) => {
@@ -615,12 +616,12 @@ impl Scene {
                             apply!(painter, gs, ui, left_rect, gs);
                         });
                     });
-                    
+
                     // 右侧窗口（右眼）
                     ui.scope(|ui| {
                         ui.set_min_width(window_width);
                         ui.set_max_width(window_width);
-                        
+
                         egui::Frame::canvas(ui.style()).show(ui, |ui| {
                             macro_rules! case {
                                 ($sh:ident, $cov3d:ident) => {
@@ -685,11 +686,11 @@ impl Scene {
 
                             // 为右眼计算距离时使用偏移后的相机位置
                             let modified_camera_pos = Vec3::new(
-                                -gs.camera.control.pos().x, 
-                                gs.camera.control.pos().y, 
+                                -gs.camera.control.pos().x,
+                                gs.camera.control.pos().y,
                                 gs.camera.control.pos().z
                             );
-                            
+
                             let distances = gs
                                 .models
                                 .iter()
@@ -858,7 +859,7 @@ impl Scene {
             });
         }
 
-        loaded  // 返回加载状态
+        loaded // 返回加载状态
     }
 
     /// 执行后处理
@@ -878,36 +879,36 @@ impl Scene {
             renderer,
             ..
         } = frame.wgpu_render_state().expect("render state");
-        
-        let mut renderer = renderer.write();  // 锁定渲染器
+
+        let mut renderer = renderer.write(); // 锁定渲染器
         // 获取场景资源
         let SceneResource::<G> { viewer, .. } = renderer
             .callback_resources
             .get_mut()
             .expect("scene resource");
-        let viewer = viewer.lock().expect("viewer");  // 锁定查看器
+        let viewer = viewer.lock().expect("viewer"); // 锁定查看器
 
         // 后处理，因为 eframe 无法在渲染通道后执行任何计算通道
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Postprocess Encoder"),  // 设置编码器标签
+            label: Some("Postprocess Encoder"), // 设置编码器标签
         });
 
         // 对每个可见模型执行后处理
         for key in gs.models.iter().filter(|(_, m)| m.visible).map(|(k, _)| k) {
-            let model = &viewer.models.get(key).expect("model");  // 获取模型
+            let model = &viewer.models.get(key).expect("model"); // 获取模型
 
             // 执行后处理
             viewer.postprocessor.postprocess(
                 &mut encoder,
-                &model.bind_groups.postprocessor.0,  // 第一个后处理器绑定组
-                &model.bind_groups.postprocessor.1,  // 第二个后处理器绑定组
-                model.gaussian_buffers.gaussians_buffer.len() as u32,  // 高斯缓冲区长度
-                &model.gaussian_buffers.postprocess_indirect_args_buffer,  // 后处理间接参数缓冲区
+                &model.bind_groups.postprocessor.0, // 第一个后处理器绑定组
+                &model.bind_groups.postprocessor.1, // 第二个后处理器绑定组
+                model.gaussian_buffers.gaussians_buffer.len() as u32, // 高斯缓冲区长度
+                &model.gaussian_buffers.postprocess_indirect_args_buffer, // 后处理间接参数缓冲区
             );
         }
 
-        queue.submit(Some(encoder.finish()));  // 提交命令
-        device.poll(wgpu::Maintain::Wait);     // 等待设备完成操作
+        queue.submit(Some(encoder.finish())); // 提交命令
+        device.poll(wgpu::Maintain::Wait); // 等待设备完成操作
 
         // 接收查询结果
         match &mut self.query_result {
@@ -919,17 +920,17 @@ impl Scene {
                     tx,
                 } = &self.query
                 {
-                    let (query_result_tx, rx) = oneshot::channel();  // 创建单次通道
-                    self.query_result = Some(QueryResult::Downloading(rx));  // 设置为下载状态
+                    let (query_result_tx, rx) = oneshot::channel(); // 创建单次通道
+                    self.query_result = Some(QueryResult::Downloading(rx)); // 设置为下载状态
 
-                    let device = device.clone();      // 克隆设备
-                    let queue = queue.clone();        // 克隆队列
-                    let pod = *pod;                  // 克隆查询POD
-                    let hit_method = *hit_method;    // 克隆命中方法
-                    let tx = tx.clone();             // 克隆发送端
-                    let camera = gs.camera.control.clone();  // 克隆相机控制
-                    let viewer_size = Vec2::from_array(rect.size().into()).as_uvec2();  // 获取视图尺寸
-                    
+                    let device = device.clone(); // 克隆设备
+                    let queue = queue.clone(); // 克隆队列
+                    let pod = *pod; // 克隆查询POD
+                    let hit_method = *hit_method; // 克隆命中方法
+                    let tx = tx.clone(); // 克隆发送端
+                    let camera = gs.camera.control.clone(); // 克隆相机控制
+                    let viewer_size = Vec2::from_array(rect.size().into()).as_uvec2(); // 获取视图尺寸
+
                     // 获取计数缓冲区
                     let count_buffer = viewer
                         .models
@@ -955,7 +956,7 @@ impl Scene {
                                 .await
                                 .expect("download")
                                 .into_iter()
-                                .map(gs::QueryHitResultPod::from)  // 转换为查询命中结果POD
+                                .map(gs::QueryHitResultPod::from) // 转换为查询命中结果POD
                                 .collect::<Vec<_>>();
 
                         // 根据命中方法确定位置
@@ -968,17 +969,17 @@ impl Scene {
                                     &mut results,
                                     &camera,
                                     viewer_size,
-                                    0.05,  // alpha阈值
+                                    0.05, // alpha阈值
                                 )
-                                .map(|(_, _, pos)| pos)  // 提取位置
-                                .unwrap_or(Vec3::ZERO)   // 默认为零向量
+                                .map(|(_, _, pos)| pos) // 提取位置
+                                .unwrap_or(Vec3::ZERO) // 默认为零向量
                             }
                             // 最近方法
                             app::MeasurementHitMethod::Closest => {
                                 // 按最近距离查找命中位置
                                 gs::query::hit_pos_by_closest(&pod, &results, &camera, viewer_size)
-                                    .map(|(_, pos)| pos)      // 提取位置
-                                    .unwrap_or(Vec3::ZERO)     // 默认为零向量
+                                    .map(|(_, pos)| pos) // 提取位置
+                                    .unwrap_or(Vec3::ZERO) // 默认为零向量
                             }
                         };
 
@@ -987,19 +988,20 @@ impl Scene {
                             log::error!("Error sending locate hit query result: {e}");
                         }
 
-                        query_result_tx.send(None).expect("send");  // 发送查询结果
+                        query_result_tx.send(None).expect("send"); // 发送查询结果
                     });
                 } else {
-                    self.query_result = None;  // 重置查询结果
+                    self.query_result = None; // 重置查询结果
                 }
             }
-            None | Some(QueryResult::Downloading(..)) => {}  // 其他情况无需处理
+            None | Some(QueryResult::Downloading(..)) => {} // 其他情况无需处理
         }
 
         // 如果正在下载查询结果
         if let Some(QueryResult::Downloading(rx)) = &self.query_result {
-            if let Ok(query_result) = rx.try_recv() {  // 尝试接收结果
-                self.query_result = query_result;     // 更新查询结果
+            if let Ok(query_result) = rx.try_recv() {
+                // 尝试接收结果
+                self.query_result = query_result; // 更新查询结果
             }
         }
     }
@@ -1027,92 +1029,102 @@ impl Scene {
         if is_vr_right_eye {
             // VR右眼模式：使用独立的VR viewer
             log::info!("🎯 [VR DEBUG] *** STARTING VR RIGHT EYE PREPROCESS ***");
-            
+
             let egui_wgpu::RenderState {
                 device,
                 queue,
                 renderer,
                 ..
             } = frame.wgpu_render_state().expect("render state");
-            
+
             log::debug!("📊 [VR DEBUG] Got render state for VR preprocess");
-            
+
             let mut renderer = renderer.write();
             let scene_resource = renderer
                 .callback_resources
                 .get_mut::<SceneResource<G>>()
                 .expect("scene resource");
-            
+
             log::debug!("📊 [VR DEBUG] Got scene resource for VR preprocess");
-            
+
             // 确保VR viewer存在
             scene_resource.ensure_vr_viewer(frame.wgpu_render_state().expect("render state"));
-            
+
             // 同步VR viewer的数据（从app state的gaussians Vec）
-            scene_resource.sync_vr_viewer_data(
-                frame.wgpu_render_state().expect("render state"),
-                &gs.models,
-            );
-            
+            scene_resource
+                .sync_vr_viewer_data(frame.wgpu_render_state().expect("render state"), &gs.models);
+
             if let Some(vr_viewer) = &scene_resource.vr_right_eye_viewer {
                 log::debug!("📊 [VR DEBUG] VR viewer exists, proceeding with preprocess");
                 let mut vr_viewer = vr_viewer.lock().expect("vr viewer");
                 let viewer_size = Vec2::from_array(rect.size().into()).as_uvec2();
-                
-                log::debug!("📊 [VR DEBUG] VR viewer has {} models, selected_key: '{}'", 
-                    vr_viewer.models.len(), 
+
+                log::debug!(
+                    "📊 [VR DEBUG] VR viewer has {} models, selected_key: '{}'",
+                    vr_viewer.models.len(),
                     gs.selected_model_key
                 );
-                
+
                 // 检查VR viewer是否有选中的模型
                 if !vr_viewer.models.contains_key(&gs.selected_model_key) {
-                    log::error!("❌ [VR DEBUG] VR viewer does not have selected model '{}', available models: {:?}", 
+                    log::error!(
+                        "❌ [VR DEBUG] VR viewer does not have selected model '{}', available models: {:?}",
                         gs.selected_model_key,
                         vr_viewer.models.keys().collect::<Vec<_>>()
                     );
                     return; // 如果VR viewer没有该模型，直接返回
                 }
-                
-                log::debug!("✅ [VR DEBUG] VR viewer has selected model '{}'", gs.selected_model_key);
-                
+
+                log::debug!(
+                    "✅ [VR DEBUG] VR viewer has selected model '{}'",
+                    gs.selected_model_key
+                );
+
                 // 更新VR viewer的查询纹理尺寸（如果需要）
                 let wgpu::Extent3d { width, height, .. } =
                     vr_viewer.world_buffers.query_texture.texture().size();
                 let texture_size = uvec2(width, height);
-                
+
                 if texture_size != viewer_size {
-                    log::debug!("🔄 [VR DEBUG] Updating VR viewer query texture size from {:?} to {:?}", texture_size, viewer_size);
+                    log::debug!(
+                        "🔄 [VR DEBUG] Updating VR viewer query texture size from {:?} to {:?}",
+                        texture_size,
+                        viewer_size
+                    );
                     vr_viewer.update_query_texture_size(device, viewer_size);
                 }
-                
+
                 // 不再修改相机位置，保持原始相机
                 // 更新VR右窗口viewer的相机（使用原始相机）
                 vr_viewer.update_camera(queue, &gs.camera.control, viewer_size);
                 log::debug!("📷 [VR DEBUG] Updated VR camera (no offset)");
-                
+
                 // 基础IPD（眼间距）
                 const BASE_IPD: f32 = 0.065;
-                
+
                 // 使用视差强度参数（从UI滑块获取）
                 let effective_ipd = BASE_IPD * self.vr_parallax_strength;
-                
+
                 // 右窗口：模型向右偏移（修正）
                 let mut modified_model_pos = gs.selected_model().transform.pos;
                 modified_model_pos.x += effective_ipd / 2.0;
-                
-                log::info!("👁️ [VR DEBUG] RIGHT window - Parallax strength: {:.1}×, Model X offset: +{:.3}", 
-                    self.vr_parallax_strength, effective_ipd / 2.0);
-                
+
+                log::info!(
+                    "👁️ [VR DEBUG] RIGHT window - Parallax strength: {:.1}×, Model X offset: +{:.3}",
+                    self.vr_parallax_strength,
+                    effective_ipd / 2.0
+                );
+
                 // 更新VR右窗口viewer的模型变换（使用偏移后的模型位置）
                 vr_viewer.update_model_transform(
                     queue,
                     &gs.selected_model_key,
-                    modified_model_pos,  // 使用偏移后的位置
+                    modified_model_pos, // 使用偏移后的位置
                     gs.selected_model().transform.quat(),
                     gs.selected_model().transform.scale,
                 );
                 log::debug!("🔄 [VR DEBUG] Updated VR model transform with offset");
-                
+
                 vr_viewer.update_gaussian_transform(
                     queue,
                     gs.gaussian_transform.size,
@@ -1121,48 +1133,48 @@ impl Scene {
                     gs.gaussian_transform.no_sh0,
                 );
                 log::debug!("🔄 [VR DEBUG] Updated VR gaussian transform");
-                
+
                 // 🔑 关键修复：执行VR viewer的预处理和排序管线
                 let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("VR Preprocess Encoder"),
                 });
-                
+
                 // 对所有可见模型执行预处理和排序
                 for key in gs.models.iter().filter(|(_, m)| m.visible).map(|(k, _)| k) {
                     if let Some(vr_model) = vr_viewer.models.get(key) {
                         log::debug!("🎨 [VR DEBUG] Preprocessing and sorting model '{}'", key);
-                        
+
                         // 执行预处理
                         vr_viewer.preprocessor.preprocess(
                             &mut encoder,
                             &vr_model.bind_groups.preprocessor,
                             vr_model.gaussian_buffers.gaussians_buffer.len() as u32,
                         );
-                        
+
                         // 执行基数排序
                         vr_viewer.radix_sorter.sort(
                             &mut encoder,
                             &vr_model.bind_groups.radix_sorter,
                             &vr_model.gaussian_buffers.radix_sort_indirect_args_buffer,
                         );
-                        
+
                         log::debug!("✅ [VR DEBUG] Preprocessed and sorted model '{}'", key);
                     }
                 }
-                
+
                 queue.submit(Some(encoder.finish()));
                 device.poll(wgpu::Maintain::Wait);
-                
+
                 log::debug!("✅ [VR DEBUG] VR preprocess and sort pipeline completed");
-                
+
                 log::info!("✅ [VR DEBUG] VR right eye preprocess completed successfully");
             } else {
                 log::error!("❌ [VR DEBUG] VR right eye viewer is None during preprocess!");
             }
-            
+
             return;
         }
-        
+
         // 正常模式：执行完整预处理
         // 解构渲染状态
         let egui_wgpu::RenderState {
@@ -1171,9 +1183,9 @@ impl Scene {
             renderer,
             ..
         } = frame.wgpu_render_state().expect("render state");
-        
-        let mut renderer = renderer.write();  // 锁定渲染器
-        
+
+        let mut renderer = renderer.write(); // 锁定渲染器
+
         // 获取场景资源
         let SceneResource::<G> {
             viewer,
@@ -1190,10 +1202,10 @@ impl Scene {
             .get_mut()
             .expect("scene resource");
 
-        let mut viewer = viewer.lock().expect("viewer");  // 锁定查看器
+        let mut viewer = viewer.lock().expect("viewer"); // 锁定查看器
         // 创建命令编码器
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Preprocess Encoder"),  // 设置编码器标签
+            label: Some("Preprocess Encoder"), // 设置编码器标签
         });
 
         // 如果没有待处理的查询结果
@@ -1201,12 +1213,12 @@ impl Scene {
             // 更新查询纹理尺寸
             let wgpu::Extent3d { width, height, .. } =
                 viewer.world_buffers.query_texture.texture().size();
-            let texture_size = uvec2(width, height);  // 纹理尺寸
+            let texture_size = uvec2(width, height); // 纹理尺寸
 
-            let viewer_size = Vec2::from_array(rect.size().into()).as_uvec2();  // 视图尺寸
+            let viewer_size = Vec2::from_array(rect.size().into()).as_uvec2(); // 视图尺寸
             // 如果纹理尺寸与视图尺寸不同
             if texture_size != viewer_size {
-                viewer.update_query_texture_size(device, viewer_size);  // 更新查询纹理尺寸
+                viewer.update_query_texture_size(device, viewer_size); // 更新查询纹理尺寸
                 // 更新查询纹理覆盖层绑定组
                 query_texture_overlay
                     .update_bind_group(device, &viewer.world_buffers.query_texture);
@@ -1216,46 +1228,47 @@ impl Scene {
                     model.update_bind_group(
                         device,
                         &viewer,
-                        &viewer.models.get(key).expect("model").gaussian_buffers,  // 获取模型高斯缓冲区
+                        &viewer.models.get(key).expect("model").gaussian_buffers, // 获取模型高斯缓冲区
                     );
                 }
             }
 
             // 处理新查询
             if let Query::MeasurementLocateHit { .. } = self.query {
-                self.query_result = Some(QueryResult::MeasurementLocateHit);  // 设置为测量定位命中结果
+                self.query_result = Some(QueryResult::MeasurementLocateHit); // 设置为测量定位命中结果
             }
 
             // 根据查询类型获取查询POD
             let query_pod = match &self.query {
-                Query::None { pod } => pod.as_query(),  // 无查询
-                Query::MeasurementLocateHit { pod, .. } => pod.as_query(),  // 测量定位查询
-                Query::Selection {  // 选择查询
+                Query::None { pod } => pod.as_query(), // 无查询
+                Query::MeasurementLocateHit { pod, .. } => pod.as_query(), // 测量定位查询
+                Query::Selection {
+                    // 选择查询
                     action,
                     op,
                     immediate,
                     brush_radius,
                     pos,
                 } => {
-                    query_toolset.set_use_texture(!immediate);  // 设置是否使用纹理
-                    query_toolset.update_brush_radius(*brush_radius);  // 更新画笔半径
+                    query_toolset.set_use_texture(!immediate); // 设置是否使用纹理
+                    query_toolset.update_brush_radius(*brush_radius); // 更新画笔半径
 
                     // 根据动作执行相应操作
                     match action {
                         Some(QuerySelectionAction::Start(tool)) => {
-                            query_toolset.start(*tool, *op, *pos)  // 开始选择
+                            query_toolset.start(*tool, *op, *pos) // 开始选择
                         }
-                        Some(QuerySelectionAction::End) => query_toolset.end(),  // 结束选择
-                        None => query_toolset.update_pos(*pos),  // 更新位置
+                        Some(QuerySelectionAction::End) => query_toolset.end(), // 结束选择
+                        None => query_toolset.update_pos(*pos),                 // 更新位置
                     };
 
-                    query_cursor.update_query_toolset(queue, query_toolset, *pos);  // 更新查询光标
+                    query_cursor.update_query_toolset(queue, query_toolset, *pos); // 更新查询光标
 
-                    query_toolset.query()  // 获取查询
+                    query_toolset.query() // 获取查询
                 }
             };
 
-            viewer.update_query(queue, query_pod);  // 更新查询
+            viewer.update_query(queue, query_pod); // 更新查询
 
             // 如果是选择查询且非立即执行
             if let Query::Selection {
@@ -1268,41 +1281,46 @@ impl Scene {
 
             // 更新查看器相机（不再修改相机位置）
             viewer.update_camera(queue, &gs.camera.control, viewer_size);
-            
+
             // 在VR模式下，通过偏移模型位置来创建立体效果
             let model_pos = if apply_vr_offset {
                 let mut modified_pos = gs.selected_model().transform.pos;
-                
+
                 // 基础IPD（眼间距）
                 const BASE_IPD: f32 = 0.065;
-                
+
                 // 使用视差强度参数（从UI滑块获取）
                 let effective_ipd = BASE_IPD * self.vr_parallax_strength;
-                
+
                 // 左窗口：模型向左偏移（修正）
                 modified_pos.x -= effective_ipd / 2.0;
-                
-                log::debug!("👁️ [VR DEBUG] LEFT window - Parallax strength: {:.1}×, Model X offset: -{:.3}", 
-                    self.vr_parallax_strength, effective_ipd / 2.0);
-                
+
+                log::debug!(
+                    "👁️ [VR DEBUG] LEFT window - Parallax strength: {:.1}×, Model X offset: -{:.3}",
+                    self.vr_parallax_strength,
+                    effective_ipd / 2.0
+                );
+
                 modified_pos
             } else {
                 gs.selected_model().transform.pos
             };
-            
-            viewer.update_model_transform(  // 更新模型变换
+
+            viewer.update_model_transform(
+                // 更新模型变换
                 queue,
-                &gs.selected_model_key,         // 模型键
-                model_pos,  // 位置（VR模式下已偏移）
-                gs.selected_model().transform.quat(),  // 四元数
-                gs.selected_model().transform.scale,   // 缩放
+                &gs.selected_model_key,               // 模型键
+                model_pos,                            // 位置（VR模式下已偏移）
+                gs.selected_model().transform.quat(), // 四元数
+                gs.selected_model().transform.scale,  // 缩放
             );
-            viewer.update_gaussian_transform(  // 更新高斯变换
+            viewer.update_gaussian_transform(
+                // 更新高斯变换
                 queue,
-                gs.gaussian_transform.size,           // 尺寸
-                gs.gaussian_transform.display_mode,   // 显示模式
-                gs.gaussian_transform.sh_deg,         // 球谐度数
-                gs.gaussian_transform.no_sh0,         // 是否无SH0
+                gs.gaussian_transform.size,         // 尺寸
+                gs.gaussian_transform.display_mode, // 显示模式
+                gs.gaussian_transform.sh_deg,       // 球谐度数
+                gs.gaussian_transform.no_sh0,       // 是否无SH0
             );
 
             // 处理选择
@@ -1313,7 +1331,7 @@ impl Scene {
                         viewer.update_selection_edit_with_pod(queue, &edit.to_pod());
                         // 更新选择高亮
                         viewer.update_selection_highlight(queue, vec4(0.0, 0.0, 0.0, 0.0));
-                        gs.selection.show_unedited = false;  // 隐藏未编辑模型
+                        gs.selection.show_unedited = false; // 隐藏未编辑模型
                     }
                     None => {
                         // 使用默认值更新选择编辑
@@ -1325,7 +1343,7 @@ impl Scene {
                             &gs::SelectionHighlightPod::new(
                                 U8Vec4::from_array(gs.selection.highlight_color.to_array())  // 颜色数组
                                     .as_vec4()  // 转为向量
-                                    / 255.0,    // 归一化
+                                    / 255.0, // 归一化
                             ),
                         );
                     }
@@ -1342,12 +1360,12 @@ impl Scene {
                 measurement_renderer.update_hit_pairs(
                     device,
                     measurement_visible_hit_pairs,
-                    &viewer.world_buffers.camera_buffer,  // 相机缓冲区
+                    &viewer.world_buffers.camera_buffer, // 相机缓冲区
                 );
             }
         }
 
-        *show_unedited_model = gs.selection.show_unedited;  // 更新显示未编辑模型标志
+        *show_unedited_model = gs.selection.show_unedited; // 更新显示未编辑模型标志
         if *show_unedited_model {
             // 如果显示未编辑模型，使用默认编辑更新选择编辑
             viewer.update_selection_edit_with_pod(queue, &gs::GaussianEditPod::default());
@@ -1355,29 +1373,30 @@ impl Scene {
 
         // 预处理
         for key in gs.models.iter().filter(|(_, m)| m.visible).map(|(k, _)| k) {
-            let model = &viewer.models.get(key).expect("model");  // 获取模型
-            let unedited_model = unedited_models.get(key).expect("unedited model");  // 获取未编辑模型
+            let model = &viewer.models.get(key).expect("model"); // 获取模型
+            let unedited_model = unedited_models.get(key).expect("unedited model"); // 获取未编辑模型
 
             // 执行预处理
             viewer.preprocessor.preprocess(
                 &mut encoder,
-                match show_unedited_model {  // 根据是否显示未编辑模型选择绑定组
-                    true => &unedited_model.preprocessor_bind_group,  // 未编辑模型绑定组
+                match show_unedited_model {
+                    // 根据是否显示未编辑模型选择绑定组
+                    true => &unedited_model.preprocessor_bind_group, // 未编辑模型绑定组
                     false => &model.bind_groups.preprocessor,        // 模型预处理器绑定组
                 },
-                model.gaussian_buffers.gaussians_buffer.len() as u32,  // 高斯缓冲区长度
+                model.gaussian_buffers.gaussians_buffer.len() as u32, // 高斯缓冲区长度
             );
 
             // 执行基数排序
             viewer.radix_sorter.sort(
                 &mut encoder,
-                &model.bind_groups.radix_sorter,  // 基数排序绑定组
-                &model.gaussian_buffers.radix_sort_indirect_args_buffer,  // 间接参数缓冲区
+                &model.bind_groups.radix_sorter, // 基数排序绑定组
+                &model.gaussian_buffers.radix_sort_indirect_args_buffer, // 间接参数缓冲区
             );
         }
 
-        queue.submit(Some(encoder.finish()));  // 提交命令
-        device.poll(wgpu::Maintain::Wait);     // 等待设备完成操作
+        queue.submit(Some(encoder.finish())); // 提交命令
+        device.poll(wgpu::Maintain::Wait); // 等待设备完成操作
     }
 
     /// 初始化场景
@@ -1399,43 +1418,45 @@ impl Scene {
                 ui.add(egui::Label::new(
                     egui::RichText::new("Model loaded successfully ✅").heading(),
                 ));
-                ui.separator();  // 添加分隔符
-                ui.label("Please confirm the settings for initializing the scene");  // 请确认初始化设置
-                ui.label("");  // 空标签
+                ui.separator(); // 添加分隔符
+                ui.label("Please confirm the settings for initializing the scene"); // 请确认初始化设置
+                ui.label(""); // 空标签
 
                 // 创建初始化场景网格
                 egui::Grid::new("initialize_scene_grid")
-                    .striped(true)  // 使用条纹样式
+                    .striped(true) // 使用条纹样式
                     .show(ui, |ui| {
                         // 添加表头
-                        ui.add(egui::Label::new(egui::RichText::new("Property").strong()));  // 属性
+                        ui.add(egui::Label::new(egui::RichText::new("Property").strong())); // 属性
                         ui.add(egui::Label::new(
-                            egui::RichText::new("Compression").strong(),  // 压缩
+                            egui::RichText::new("Compression").strong(), // 压缩
                         ));
-                        ui.add(egui::Label::new(egui::RichText::new("Size").strong()));  // 尺寸
-                        ui.end_row();  // 结束行
+                        ui.add(egui::Label::new(egui::RichText::new("Size").strong())); // 尺寸
+                        ui.end_row(); // 结束行
 
-                        ui.label("Position");  // 位置
-                        ui.label("N/A");  // 不适用
-                        ui.label(util::human_readable_size(  // 人类可读尺寸
+                        ui.label("Position"); // 位置
+                        ui.label("N/A"); // 不适用
+                        ui.label(util::human_readable_size(
+                            // 人类可读尺寸
                             std::mem::size_of::<Vec3>()  // Vec3 占用的内存大小
-                                * gs.selected_model().gaussians.gaussians.capacity(),  // 乘以容量
+                                * gs.selected_model().gaussians.gaussians.capacity(), // 乘以容量
                         ));
-                        ui.end_row();  // 结束行
+                        ui.end_row(); // 结束行
 
-                        ui.label("Color");  // 颜色
-                        ui.label("N/A");  // 不适用
-                        ui.label(util::human_readable_size(  // 人类可读尺寸
+                        ui.label("Color"); // 颜色
+                        ui.label("N/A"); // 不适用
+                        ui.label(util::human_readable_size(
+                            // 人类可读尺寸
                             std::mem::size_of::<U8Vec4>()  // U8Vec4 占用的内存大小
-                                * gs.selected_model().gaussians.gaussians.capacity(),  // 乘以容量
+                                * gs.selected_model().gaussians.gaussians.capacity(), // 乘以容量
                         ));
-                        ui.end_row();  // 结束行
+                        ui.end_row(); // 结束行
 
-                        ui.label("Spherical Harmonics");  // 球谐函数
+                        ui.label("Spherical Harmonics"); // 球谐函数
                         // 组合框选择球谐压缩
                         egui::ComboBox::from_id_salt("initialize_scene_sh_compression")
-                            .width(150.0)  // 宽度
-                            .selected_text(compressions.sh.to_string())  // 已选文本
+                            .width(150.0) // 宽度
+                            .selected_text(compressions.sh.to_string()) // 已选文本
                             .show_ui(ui, |ui| {
                                 // 遍历所有球谐压缩选项
                                 for sh in app::ShCompression::iter() {
@@ -1443,10 +1464,12 @@ impl Scene {
                                     ui.selectable_value(&mut compressions.sh, sh, sh.to_string());
                                 }
 
-                                gs.compressions.sh = compressions.sh;  // 更新全局设置
+                                gs.compressions.sh = compressions.sh; // 更新全局设置
                             });
-                        ui.label(util::human_readable_size(  // 人类可读尺寸
-                            match compressions.sh {  // 根据压缩类型计算尺寸
+                        ui.label(util::human_readable_size(
+                            // 人类可读尺寸
+                            match compressions.sh {
+                                // 根据压缩类型计算尺寸
                                 app::ShCompression::Single => std::mem::size_of::<
                                     <gs::GaussianShSingleConfig as gs::GaussianShConfig>::Field,
                                 >(),
@@ -1459,15 +1482,15 @@ impl Scene {
                                 app::ShCompression::Remove => std::mem::size_of::<
                                     <gs::GaussianShNoneConfig as gs::GaussianShConfig>::Field,
                                 >(),
-                            } * gs.selected_model().gaussians.gaussians.capacity(),  // 乘以容量
+                            } * gs.selected_model().gaussians.gaussians.capacity(), // 乘以容量
                         ));
-                        ui.end_row();  // 结束行
+                        ui.end_row(); // 结束行
 
-                        ui.label("Covariance 3D");  // 3D协方差
+                        ui.label("Covariance 3D"); // 3D协方差
                         // 组合框选择协方差压缩
                         egui::ComboBox::from_id_salt("loading_scene_cov3d_compression")
-                            .width(150.0)  // 宽度
-                            .selected_text(compressions.cov3d.to_string())  // 已选文本
+                            .width(150.0) // 宽度
+                            .selected_text(compressions.cov3d.to_string()) // 已选文本
                             .show_ui(ui, |ui| {
                                 // 遍历所有协方差压缩选项
                                 for cov3d in app::Cov3dCompression::iter() {
@@ -1479,7 +1502,7 @@ impl Scene {
                                     );
                                 }
 
-                                gs.compressions.cov3d = compressions.cov3d;  // 更新全局设置
+                                gs.compressions.cov3d = compressions.cov3d; // 更新全局设置
                             });
                         ui.label(util::human_readable_size(  // 人类可读尺寸
                             match compressions.cov3d {  // 根据压缩类型计算尺寸
@@ -1493,10 +1516,10 @@ impl Scene {
                                 >(),
                             } * gs.selected_model().gaussians.gaussians.capacity(),  // 乘以容量
                         ));
-                        ui.end_row();  // 结束行
+                        ui.end_row(); // 结束行
                     });
 
-                ui.label("");  // 空标签
+                ui.label(""); // 空标签
 
                 // 显示高斯数量
                 ui.label(format!(
@@ -1505,7 +1528,7 @@ impl Scene {
                         .gaussians
                         .gaussians
                         .capacity()
-                        .to_formatted_string(&num_format::Locale::en)  // 格式化数字
+                        .to_formatted_string(&num_format::Locale::en) // 格式化数字
                 ));
 
                 // 显示原始尺寸
@@ -1513,7 +1536,7 @@ impl Scene {
                     "Original Size: {}",
                     util::human_readable_size(
                         gs.selected_model().gaussians.gaussians.capacity()  // 容量
-                            * std::mem::size_of::<gs::PlyGaussianPod>()  // PlyGaussianPod占用的内存大小
+                            * std::mem::size_of::<gs::PlyGaussianPod>() // PlyGaussianPod占用的内存大小
                     )
                 ));
                 // 显示压缩后尺寸
@@ -1521,10 +1544,10 @@ impl Scene {
                     "Compressed Size: {}",
                     util::human_readable_size(
                         compressions
-                            .compressed_size(gs.selected_model().gaussians.gaussians.capacity())  // 压缩后的尺寸
+                            .compressed_size(gs.selected_model().gaussians.gaussians.capacity()) // 压缩后的尺寸
                     )
                 ));
-                ui.label("");  // 空标签
+                ui.label(""); // 空标签
 
                 // 水平布局按钮
                 ui.horizontal(|ui| {
@@ -1590,15 +1613,15 @@ impl Scene {
                             }
                         }
 
-                        return Ok(Some(true));  // 返回确认
+                        return Ok(Some(true)); // 返回确认
                     }
 
                     // 如果点击了取消按钮
                     if ui.button("Cancel").clicked() {
-                        return Ok(Some(false));  // 返回取消
+                        return Ok(Some(false)); // 返回取消
                     }
 
-                    Ok(None)  // 返回未确认
+                    Ok(None) // 返回未确认
                 })
                 .inner
             })
@@ -2488,7 +2511,7 @@ pub struct SceneResource<G: gs::GaussianPod> {
 
     /// VR右眼viewer（用于VR模式的立体视觉）
     pub vr_right_eye_viewer: Option<Arc<Mutex<gs::MultiModelViewer<G>>>>,
-    
+
     /// VR viewer数据是否已同步
     pub vr_data_synced: bool,
 }
@@ -2608,7 +2631,7 @@ impl<G: gs::GaussianPod> SceneResource<G> {
     fn ensure_vr_viewer(&mut self, render_state: &egui_wgpu::RenderState) {
         if self.vr_right_eye_viewer.is_none() {
             log::info!("🔧 [VR DEBUG] Creating VR right eye viewer on demand");
-            
+
             // 创建VR右眼viewer
             let vr_viewer = Arc::new(Mutex::new(gs::MultiModelViewer::new_with(
                 &render_state.device,
@@ -2622,21 +2645,24 @@ impl<G: gs::GaussianPod> SceneResource<G> {
                 }),
                 uvec2(1, 1),
             )));
-            
+
             // 将主viewer中的所有模型复制到VR viewer
             let main_viewer = self.viewer.lock().expect("main viewer");
             let mut vr_viewer_locked = vr_viewer.lock().expect("vr viewer");
-            
+
             for (key, _main_model) in main_viewer.models.iter() {
-                log::info!("📦 [VR DEBUG] Copying model structure '{}' to VR viewer", key);
-                
+                log::info!(
+                    "📦 [VR DEBUG] Copying model structure '{}' to VR viewer",
+                    key
+                );
+
                 // 获取模型的高斯数量
                 let gaussian_count = _main_model.gaussian_buffers.gaussians_buffer.len();
-                
+
                 // 为VR viewer创建独立的资源
                 let mut vr_unedited_models = HashMap::new();
                 let mut vr_mask_gizmos = HashMap::new();
-                
+
                 Self::add_model_with_viewer(
                     &mut vr_viewer_locked,
                     &mut vr_unedited_models,
@@ -2646,18 +2672,22 @@ impl<G: gs::GaussianPod> SceneResource<G> {
                     key.clone(),
                     gaussian_count,
                 );
-                
-                log::info!("✅ [VR DEBUG] Model structure '{}' created with {} gaussian slots", key, gaussian_count);
+
+                log::info!(
+                    "✅ [VR DEBUG] Model structure '{}' created with {} gaussian slots",
+                    key,
+                    gaussian_count
+                );
             }
-            
+
             drop(main_viewer);
             drop(vr_viewer_locked);
-            
+
             self.vr_right_eye_viewer = Some(vr_viewer);
             log::info!("✅ [VR DEBUG] VR right eye viewer created successfully");
         }
     }
-    
+
     /// 同步VR viewer的所有模型数据（从app state的gaussians Vec复制）
     fn sync_vr_viewer_data(
         &mut self,
@@ -2668,35 +2698,44 @@ impl<G: gs::GaussianPod> SceneResource<G> {
         if self.vr_data_synced || self.vr_right_eye_viewer.is_none() {
             return;
         }
-        
+
         log::info!("🔄 [VR DEBUG] Starting VR viewer data synchronization (first time only)");
-        
+
         let vr_viewer = self.vr_right_eye_viewer.as_ref().unwrap();
         let vr_viewer_locked = vr_viewer.lock().expect("vr viewer");
-        
+
         for (key, gs_model) in gs_models.iter() {
             if let Some(vr_model) = vr_viewer_locked.models.get(key) {
                 let gaussian_count = gs_model.gaussians.gaussians.len();
-                
+
                 if gaussian_count > 0 {
-                    log::info!("🔄 [VR DEBUG] Syncing {} gaussians for model '{}'", gaussian_count, key);
-                    
+                    log::info!(
+                        "🔄 [VR DEBUG] Syncing {} gaussians for model '{}'",
+                        gaussian_count,
+                        key
+                    );
+
                     // 直接从app state的gaussians Vec上传数据到VR viewer
-                    vr_model
-                        .gaussian_buffers
-                        .gaussians_buffer
-                        .update_range(&render_state.queue, 0, &gs_model.gaussians.gaussians);
-                    
-                    log::info!("✅ [VR DEBUG] Successfully synced {} gaussians for model '{}'", gaussian_count, key);
+                    vr_model.gaussian_buffers.gaussians_buffer.update_range(
+                        &render_state.queue,
+                        0,
+                        &gs_model.gaussians.gaussians,
+                    );
+
+                    log::info!(
+                        "✅ [VR DEBUG] Successfully synced {} gaussians for model '{}'",
+                        gaussian_count,
+                        key
+                    );
                 }
             }
         }
-        
+
         drop(vr_viewer_locked);
-        
+
         // 标记为已同步，避免重复同步
         self.vr_data_synced = true;
-        
+
         log::info!("✅ [VR DEBUG] VR viewer data sync completed and marked as synced");
     }
 
@@ -2708,8 +2747,13 @@ impl<G: gs::GaussianPod> SceneResource<G> {
         start: usize,
         gaussians: &[gs::Gaussian],
     ) {
-        log::debug!("🔄 [VR DEBUG] Loading model '{}': start={}, gaussians_count={}", key, start, gaussians.len());
-        
+        log::debug!(
+            "🔄 [VR DEBUG] Loading model '{}': start={}, gaussians_count={}",
+            key,
+            start,
+            gaussians.len()
+        );
+
         // 更新主viewer
         self.viewer
             .lock()
@@ -2725,14 +2769,20 @@ impl<G: gs::GaussianPod> SceneResource<G> {
         if let Some(vr_viewer) = &self.vr_right_eye_viewer {
             let vr_viewer_locked = vr_viewer.lock().expect("vr viewer");
             if let Some(vr_model) = vr_viewer_locked.models.get(key) {
-                log::debug!("✅ [VR DEBUG] Updating VR viewer model '{}' with {} gaussians", key, gaussians.len());
-                vr_model
-                    .gaussian_buffers
-                    .gaussians_buffer
-                    .update_range(&render_state.queue, start, gaussians);
+                log::debug!(
+                    "✅ [VR DEBUG] Updating VR viewer model '{}' with {} gaussians",
+                    key,
+                    gaussians.len()
+                );
+                vr_model.gaussian_buffers.gaussians_buffer.update_range(
+                    &render_state.queue,
+                    start,
+                    gaussians,
+                );
             } else {
-                log::warn!("⚠️ [VR DEBUG] VR viewer does not have model '{}', available models: {:?}", 
-                    key, 
+                log::warn!(
+                    "⚠️ [VR DEBUG] VR viewer does not have model '{}', available models: {:?}",
+                    key,
                     vr_viewer_locked.models.keys().collect::<Vec<_>>()
                 );
             }
@@ -2758,7 +2808,10 @@ impl<G: gs::GaussianPod> SceneResource<G> {
 
         // 只有在VR viewer已经存在时才添加到VR右眼viewer
         if let Some(vr_viewer) = &self.vr_right_eye_viewer {
-            log::info!("🔧 [VR DEBUG] Adding model '{}' to existing VR right eye viewer", key);
+            log::info!(
+                "🔧 [VR DEBUG] Adding model '{}' to existing VR right eye viewer",
+                key
+            );
             let mut vr_viewer = vr_viewer.lock().expect("vr viewer");
             // 为VR viewer创建独立的unedited_models和mask_gizmos（但我们不需要存储它们）
             let mut vr_unedited_models = HashMap::new();
@@ -2772,9 +2825,15 @@ impl<G: gs::GaussianPod> SceneResource<G> {
                 key.clone(),
                 count,
             );
-            log::info!("✅ [VR DEBUG] VR viewer now has {} models after adding '{}'", vr_viewer.models.len(), key);
+            log::info!(
+                "✅ [VR DEBUG] VR viewer now has {} models after adding '{}'",
+                vr_viewer.models.len(),
+                key
+            );
         } else {
-            log::debug!("ℹ️ [VR DEBUG] VR right eye viewer not created yet, skipping VR model addition");
+            log::debug!(
+                "ℹ️ [VR DEBUG] VR right eye viewer not created yet, skipping VR model addition"
+            );
         }
     }
 
@@ -2855,7 +2914,7 @@ impl<G: gs::GaussianPod> SceneResource<G> {
 
         // 从主viewer移除
         self.viewer.lock().expect("viewer").remove_model(key);
-        
+
         // 从VR右眼viewer移除
         if let Some(vr_viewer) = &self.vr_right_eye_viewer {
             vr_viewer.lock().expect("vr viewer").remove_model(key);
@@ -3003,10 +3062,15 @@ impl<G: gs::GaussianPod + Send + Sync> egui_wgpu::CallbackTrait for SceneCallbac
 
         {
             let active_viewer_locked = active_viewer.lock().expect("active viewer");
-            
-            log::debug!("🎨 [VR DEBUG] Rendering {} models with {} (VR right eye: {})", 
+
+            log::debug!(
+                "🎨 [VR DEBUG] Rendering {} models with {} (VR right eye: {})",
                 self.model_render_keys.len(),
-                if self.is_vr_right_eye { "VR viewer" } else { "main viewer" },
+                if self.is_vr_right_eye {
+                    "VR viewer"
+                } else {
+                    "main viewer"
+                },
                 self.is_vr_right_eye
             );
 
@@ -3014,10 +3078,15 @@ impl<G: gs::GaussianPod + Send + Sync> egui_wgpu::CallbackTrait for SceneCallbac
                 // 检查模型是否存在于当前viewer中
                 if let Some(model) = active_viewer_locked.models.get(key) {
                     let unedited_model = unedited_models.get(key).expect("unedited model");
-                    
-                    log::debug!("✅ [VR DEBUG] Rendering model '{}' with {} (VR: {})", 
-                        key, 
-                        if self.is_vr_right_eye { "VR viewer" } else { "main viewer" },
+
+                    log::debug!(
+                        "✅ [VR DEBUG] Rendering model '{}' with {} (VR: {})",
+                        key,
+                        if self.is_vr_right_eye {
+                            "VR viewer"
+                        } else {
+                            "main viewer"
+                        },
                         self.is_vr_right_eye
                     );
 
@@ -3031,7 +3100,8 @@ impl<G: gs::GaussianPod + Send + Sync> egui_wgpu::CallbackTrait for SceneCallbac
                     );
                 } else if self.is_vr_right_eye {
                     // 如果是VR右眼且模型不存在，记录警告但继续渲染其他模型
-                    log::error!("❌ [VR DEBUG] Model '{}' not found in VR right eye viewer, available models: {:?}", 
+                    log::error!(
+                        "❌ [VR DEBUG] Model '{}' not found in VR right eye viewer, available models: {:?}",
                         key,
                         active_viewer_locked.models.keys().collect::<Vec<_>>()
                     );
